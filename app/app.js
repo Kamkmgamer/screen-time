@@ -248,6 +248,17 @@
     return String(name || '').replace(/^(Google|Microsoft|Mozilla)\s+/, '');
   }
 
+  // The app that was counted most recently today. The tracker only knows what it
+  // has counted in this run, so a fresh session would otherwise claim nothing was
+  // ever counted while the day already holds hours.
+  function lastCountedName(day) {
+    let best = null;
+    for (const app of Object.values((day && day.apps) || {})) {
+      if (!best || (Number(app.lastAt) || 0) > (Number(best.lastAt) || 0)) best = app;
+    }
+    return best ? best.name : null;
+  }
+
   function timeOf(iso) {
     if (!iso) return null;
     const date = new Date(iso);
@@ -957,7 +968,7 @@
     idle: { label: 'Idle', dot: false, why: 'No time added. Counting starts again on input.' },
     limit: { label: 'Media limit reached', dot: false, why: 'Media kept playing without input. Counting resumes when you touch the keyboard.' },
     paused: { label: 'Paused', dot: false, why: 'Nothing is being recorded. Resume when you want totals again.' },
-    self: { label: 'Last counted · —', dot: false, why: 'Tally is in front now, and is never counted.' },
+    self: { label: 'Tally in front', dot: false, why: 'Tally is in front now, and is never counted.' },
     starting: { label: 'Starting', dot: false, why: 'Reading the app in front.' },
     unsupported: { label: 'Tracking unavailable', dot: false, why: 'Screen-time tracking currently runs on Windows.' },
     error: { label: 'Not recording', dot: false, why: 'The last read did not work.' },
@@ -986,7 +997,10 @@
               ? tracking.error
               : base.why;
     const label = reason === 'self'
-      ? `Last counted · ${tracking.app ? shortName(tracking.app) : 'nothing yet'}`
+      ? (() => {
+          const counted = lastCountedName(snap.today) || tracking.app;
+          return counted ? `Last counted · ${shortName(counted)}` : STATES.self.label;
+        })()
       : base.label;
     return { reason, label, why, dot: base.dot };
   }
