@@ -3,23 +3,66 @@
   "productName": "Tally",
   "version": "1.0.0",
   "description": "Local screen-time tracker: which app and which website took your day.",
+  "author": "Screen",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
     "demo": "electron . --demo",
     "make-icons": "node scripts/make-icons.js",
-    "check": "node scripts/koffi-test.js"
+    "icons": "node scripts/fetch-icons.js",
+    "check": "node scripts/koffi-test.js",
+    "dist": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --dir"
   },
   "dependencies": {
     "koffi": "^2.14.1",
     "sql.js": "^1.13.0"
   },
   "devDependencies": {
-    "electron": "^40.0.0"
+    "electron": "^40.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.screengd.tally",
+    "productName": "Tally",
+    "copyright": "Copyright © 2026 Screen",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "app/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "Tally-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tally",
+      "uninstallDisplayName": "Tally",
+      "deleteAppDataOnUninstall": false
+    }
   },
   "allowScripts": {
     "electron@40.10.6": true,
-    "koffi@2.16.3": true
+    "koffi@2.16.3": true,
+    "electron-winstaller@5.4.0": true
   }
 }

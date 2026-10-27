@@ -276,6 +276,17 @@ svg { display: block; flex: none; }
 .icon-btn:hover { background: var(--active); color: var(--text); }
 .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
+/* brand glyphs: bundled SVG masks, painted in one ink */
+.glyph {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  background-color: #737b86;
+  -webkit-mask: var(--glyph) center / 17px 17px no-repeat;
+  mask: var(--glyph) center / 17px 17px no-repeat;
+}
+.glyph-empty { background-color: transparent; }
+
 .segmented {
   display: inline-flex;
   align-items: center;
@@ -395,6 +406,9 @@ svg { display: block; flex: none; }
 .ranks { display: flex; flex-direction: column; }
 .rank-row { padding: 9px 0 10px; min-width: 0; }
 .rank-row + .rank-row { border-top: 1px solid var(--rule); }
+.rank-main { display: flex; align-items: flex-start; gap: 11px; min-width: 0; }
+.rank-main > .glyph { margin-top: 1px; }
+.rank-body { flex: 1; min-width: 0; }
 .rank-line { display: flex; align-items: baseline; gap: 12px; }
 .rank-name {
   font-size: 14px;
@@ -470,7 +484,8 @@ svg { display: block; flex: none; }
   transition: background-color 120ms ease;
 }
 .table-row:hover { background: #fbfcfd; }
-.table-row .ident { min-width: 0; }
+.table-row .ident { min-width: 0; display: grid; grid-template-columns: 17px minmax(0, 1fr); column-gap: 11px; align-items: center; }
+.table-row .ident-text { min-width: 0; }
 .table-row .name { font-size: 14px; font-weight: 500; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-row .detail {
   margin-top: 2px;
@@ -484,7 +499,6 @@ svg { display: block; flex: none; }
 .table-row .detail .browser { color: var(--muted); }
 .table-row .value { font-family: var(--mono); font-size: 14px; text-align: right; white-space: nowrap; }
 .table-row .share { font-family: var(--mono); font-size: 14px; text-align: right; color: var(--muted); white-space: nowrap; }
-.table-row .bar { grid-column: 1 / -1; margin-top: -5px; }
 
 .table-row .browser-col {
   font-size: 13px;

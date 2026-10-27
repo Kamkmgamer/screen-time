@@ -56,6 +56,154 @@
     return span;
   }
 
+  // Brand glyphs are bundled monochrome SVGs in app/icons (source: thesvg.org),
+  // painted through a mask so every one inherits the same ink. Names come from
+  // electron/tracker/apps.js; unknown apps and sites get an empty slot.
+  const APP_GLYPHS = {
+    'google chrome': 'chrome',
+    chrome: 'chrome',
+    'microsoft edge': 'edge',
+    edge: 'edge',
+    brave: 'brave',
+    firefox: 'firefox',
+    vivaldi: 'vivaldi',
+    opera: 'opera',
+    'opera gx': 'opera-gx',
+    arc: 'arc',
+    zen: 'zen',
+    'visual studio code': 'code',
+    'vs code insiders': 'code',
+    cursor: 'cursor',
+    'visual studio': 'visual-studio',
+    'intellij idea': 'intellij',
+    pycharm: 'pycharm',
+    webstorm: 'webstorm',
+    powershell: 'powershell',
+    warp: 'warp',
+    slack: 'slack',
+    discord: 'discord',
+    'microsoft teams': 'teams',
+    teams: 'teams',
+    zoom: 'zoom',
+    figma: 'figma',
+    notion: 'notion',
+    obsidian: 'obsidian',
+    linear: 'linear',
+    trello: 'trello',
+    miro: 'miro',
+    loom: 'loom',
+    airtable: 'airtable',
+    canva: 'canva',
+    framer: 'framer',
+    webflow: 'webflow',
+    photoshop: 'photoshop',
+    blender: 'blender',
+    word: 'word',
+    excel: 'excel',
+    powerpoint: 'powerpoint',
+    outlook: 'outlook',
+    spotify: 'spotify',
+    steam: 'steam',
+    telegram: 'telegram',
+    whatsapp: 'whatsapp',
+    '1password': '1password',
+    bitwarden: 'bitwarden',
+    raycast: 'raycast',
+    terminal: 'terminal',
+  };
+
+  const SITE_GLYPHS = {
+    'youtube.com': 'youtube',
+    'youtu.be': 'youtube',
+    'github.com': 'github',
+    'gist.github.com': 'github',
+    'gitlab.com': 'gitlab',
+    'mail.google.com': 'gmail',
+    'google.com': 'google',
+    'linear.app': 'linear',
+    'mozilla.org': 'mozilla',
+    'news.ycombinator.com': 'ycombinator',
+    'reddit.com': 'reddit',
+    'wikipedia.org': 'wikipedia',
+    'stackoverflow.com': 'stackoverflow',
+    'chatgpt.com': 'chatgpt',
+    'chat.openai.com': 'chatgpt',
+    'claude.ai': 'claude',
+    'notion.so': 'notion',
+    'figma.com': 'figma',
+    'slack.com': 'slack',
+    'discord.com': 'discord',
+    'spotify.com': 'spotify',
+    'open.spotify.com': 'spotify',
+    'netflix.com': 'netflix',
+    'linkedin.com': 'linkedin',
+    'amazon.com': 'amazon',
+    'twitch.tv': 'twitch',
+    'x.com': 'x',
+    'twitter.com': 'x',
+    'instagram.com': 'instagram',
+    'facebook.com': 'facebook',
+    'tiktok.com': 'tiktok',
+    'medium.com': 'medium',
+    'substack.com': 'substack',
+    'duckduckgo.com': 'duckduckgo',
+    'bing.com': 'bing',
+    'threads.net': 'threads',
+    'vercel.com': 'vercel',
+    'npmjs.com': 'npm',
+    'nodejs.org': 'nodejs',
+    'python.org': 'python',
+    'rust-lang.org': 'rust',
+    'go.dev': 'go',
+    'docker.com': 'docker',
+    'supabase.com': 'supabase',
+    'firebase.google.com': 'firebase',
+    'cloudflare.com': 'cloudflare',
+    'canva.com': 'canva',
+    'trello.com': 'trello',
+    'miro.com': 'miro',
+    'loom.com': 'loom',
+    'airtable.com': 'airtable',
+    'framer.com': 'framer',
+    'webflow.com': 'webflow',
+    'teams.microsoft.com': 'teams',
+    'zoom.us': 'zoom',
+    'outlook.com': 'outlook',
+    'outlook.office.com': 'outlook',
+    '1password.com': '1password',
+    'bitwarden.com': 'bitwarden',
+    'raycast.com': 'raycast',
+    'warp.dev': 'warp',
+    'cursor.com': 'cursor',
+    'code.visualstudio.com': 'code',
+    'obsidian.md': 'obsidian',
+  };
+
+  const BROWSER_GLYPHS = ['chrome', 'edge', 'brave', 'vivaldi', 'opera', 'opera-gx', 'firefox', 'zen', 'arc'];
+
+  function glyph(key) {
+    if (!key) return h('span', { class: 'glyph glyph-empty', 'aria-hidden': 'true' });
+    return h('span', { class: 'glyph', 'aria-hidden': 'true', style: `--glyph: url("icons/${key}.svg")` });
+  }
+
+  function appGlyph(name) {
+    return glyph(APP_GLYPHS[String(name || '').toLowerCase()] || null);
+  }
+
+  function siteGlyph(domain) {
+    const host = String(domain || '').toLowerCase().replace(/^www\./, '');
+    const parts = host.split('.');
+    for (let i = 0; i < parts.length - 1; i++) {
+      const key = SITE_GLYPHS[parts.slice(i).join('.')];
+      if (key) return glyph(key);
+    }
+    return glyph(null);
+  }
+
+  function browserGlyph(id) {
+    return glyph(BROWSER_GLYPHS.includes(id) ? id : null);
+  }
+
   function pctText(part, whole) {
     if (!whole || !part) return '0%';
     const value = (part / whole) * 100;
@@ -222,6 +370,7 @@
           h('button', { class: 'card-link', type: 'button', onclick: () => go('apps') }, 'All apps'))),
       apps.length
         ? h('ol', { class: 'ranks' }, apps.slice(0, 6).map((app) => rankRow({
+          glyph: appGlyph(app.name),
           name: app.name,
           detail: app.title || 'No window title',
           value: durationText(app.seconds),
@@ -240,6 +389,7 @@
           h('button', { class: 'card-link', type: 'button', onclick: () => go('sites') }, 'All sites'))),
       sites.length
         ? h('ol', { class: 'ranks' }, sites.slice(0, 6).map((site) => rankRow({
+          glyph: siteGlyph(site.domain),
           name: site.domain,
           detail: site.title || site.browser || 'Page title unavailable',
           value: durationText(site.seconds),
@@ -292,14 +442,17 @@
       h('div', { class: 'kpi-note', text: note }));
   }
 
-  function rankRow({ name, detail, value, share, width }) {
+  function rankRow({ name, detail, value, share, width, glyph: mark }) {
     return h('li', { class: 'rank-row' },
-      h('div', { class: 'rank-line' },
-        h('span', { class: 'rank-name', text: name, title: name }),
-        h('span', { class: 'rank-value', text: value })),
-      h('div', { class: 'rank-subline' },
-        h('span', { class: 'rank-sub', text: detail, title: detail }),
-        h('span', { class: 'rank-share', text: share })),
+      h('div', { class: 'rank-main' },
+        mark || null,
+        h('div', { class: 'rank-body' },
+          h('div', { class: 'rank-line' },
+            h('span', { class: 'rank-name', text: name, title: name }),
+            h('span', { class: 'rank-value', text: value })),
+          h('div', { class: 'rank-subline' },
+            h('span', { class: 'rank-sub', text: detail, title: detail }),
+            h('span', { class: 'rank-share', text: share })))),
       h('div', { class: 'bar' }, h('i', { style: `width:${Math.max(2, Math.round(width * 100))}%` })));
   }
 
@@ -339,11 +492,12 @@
             h('span', { class: 'num', text: 'Share' })),
           data.apps.map((app) => h('div', { class: 'table-row' },
             h('div', { class: 'ident' },
-              h('div', { class: 'name', text: app.name, title: app.name }),
-              h('div', { class: 'detail', text: app.title || 'No window title', title: app.title || '' })),
+              appGlyph(app.name),
+              h('div', { class: 'ident-text' },
+                h('div', { class: 'name', text: app.name, title: app.name }),
+                h('div', { class: 'detail', text: app.title || 'No window title', title: app.title || '' }))),
             h('div', { class: 'value', text: durationText(app.seconds) }),
-            h('div', { class: 'share', text: pctText(app.seconds, total) }),
-            h('div', { class: 'bar' }, h('i', { style: `width:${Math.max(2, Math.round((app.seconds / (top.seconds || 1)) * 100))}%` })))))
+            h('div', { class: 'share', text: pctText(app.seconds, total) }))))
         : emptyBlock(
           ['Nothing recorded in this range.', days === 1 ? 'Today has only just started, or tracking is paused.' : 'Try a shorter range, or leave Tally running in the tray.']));
 
@@ -386,14 +540,15 @@
           h('span', { class: 'num', text: 'Share' })),
         data.sites.map((site) => h('div', { class: 'table-row' },
           h('div', { class: 'ident' },
-            h('div', { class: 'name', text: site.domain, title: site.domain }),
-            h('div', { class: 'detail' },
-              h('span', { class: 'detail-browser' }, `${site.browser || 'Browser'} · `),
-              site.title || 'Page title unavailable')),
+            siteGlyph(site.domain),
+            h('div', { class: 'ident-text' },
+              h('div', { class: 'name', text: site.domain, title: site.domain }),
+              h('div', { class: 'detail' },
+                h('span', { class: 'detail-browser' }, `${site.browser || 'Browser'} · `),
+                site.title || 'Page title unavailable'))),
           h('div', { class: 'browser-col', text: site.browser || 'Browser' }),
           h('div', { class: 'value', text: durationText(site.seconds) }),
-          h('div', { class: 'share', text: pctText(site.seconds, total) }),
-          h('div', { class: 'bar' }, h('i', { style: `width:${Math.max(2, Math.round((site.seconds / (data.sites[0].seconds || 1)) * 100))}%` })))));
+          h('div', { class: 'share', text: pctText(site.seconds, total) }))));
     }
 
     return h('div', null,
@@ -445,6 +600,7 @@
       h('div', { class: 'browser-list' },
         installed.length
           ? installed.map((browser) => h('label', { class: 'browser-row' },
+            browserGlyph(browser.id),
             h('span', { class: 'browser-name', text: browser.name }),
             h('span', { class: 'browser-meta', text: plural(browser.profiles, 'profile', 'profiles') }),
             h('input', {
