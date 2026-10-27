@@ -12,7 +12,7 @@
     "make-icons": "node scripts/make-icons.js",
     "icons": "node scripts/fetch-icons.js",
     "check": "node scripts/koffi-test.js",
-    "dist": "electron-builder --win nsis",
+    "dist": "electron-builder --win nsis --publish never",
     "dist:dir": "electron-builder --dir"
   },
   "dependencies": {
