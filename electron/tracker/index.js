@@ -4,15 +4,37 @@ const { EventEmitter } = require('node:events');
 const { readForeground } = require('./window');
 const { appName, browserFor, cleanBrowserTitle } = require('./apps');
 const browsers = require('./browsers');
+const media = require('./media');
 
 const IGNORED_EXES = new Set(['logonui.exe', 'lockapp.exe', 'screensaver.scr', 'searchhost.exe', 'shellexperiencehost.exe']);
 
+// Once nothing is being counted, the loop drops to this cadence. One cheap read
+// every twenty seconds is enough to notice a video starting or a hand on a key.
+const IDLE_POLL_MS = 20 * 1000;
+
+// A player left running in an empty room should not bill the whole night. After
+// two hours of media with no input at all, the sample has to see a real person
+// again before it keeps counting.
+const MEDIA_BUDGET_MS = 2 * 60 * 60 * 1000;
+
+// A gap longer than this means the machine slept, not that time passed quietly.
+const MAX_TRUSTED_GAP_S = 120;
+
 class Tracker extends EventEmitter {
-  constructor({ store }) {
+  // `readWindow` and `mediaSignal` are injectable so the sampling rules can be
+  // exercised without a real desktop; main.js passes neither.
+  constructor({ store, readWindow = readForeground, mediaSignal = media } = {}) {
     super();
     this.store = store;
+    this.readWindow = readWindow;
+    this.mediaSignal = mediaSignal;
     this.timer = null;
     this.lastSampleAt = null;
+    this.lastCreditedAt = null;
+    this.mediaSince = null;
+    this.resuming = true;
+    this.suspended = false;
+    this.nextDelay = null;
     this.running = false;
     this.busy = false;
     this.status = {
@@ -22,6 +44,9 @@ class Tracker extends EventEmitter {
       site: null,
       title: '',
       idleMs: 0,
+      idle: false,
+      media: false,
+      mediaAvailable: mediaSignal.available ? mediaSignal.available() : false,
       error: null,
     };
   }
@@ -29,7 +54,10 @@ class Tracker extends EventEmitter {
   start() {
     if (this.running) return;
     this.running = true;
+    this.suspended = false;
     this.lastSampleAt = Date.now();
+    this.lastCreditedAt = Date.now();
+    this.resuming = true;
     this.schedule(300);
     if (!this.status.supported) {
       this.status.error = 'Foreground-app tracking currently runs on Windows.';
@@ -38,8 +66,8 @@ class Tracker extends EventEmitter {
 
   stop() {
     this.running = false;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
+    this.suspended = false;
+    this.clearTimer();
   }
 
   restart() {
@@ -47,17 +75,69 @@ class Tracker extends EventEmitter {
     this.start();
   }
 
+  // Locked screen or sleep: there is nothing to count, so stop the timer rather
+  // than wake up and ask. main.js drives these from powerMonitor.
+  suspend() {
+    if (!this.running || this.suspended) return;
+    this.suspended = true;
+    this.clearTimer();
+    if (!this.status.idle) {
+      this.status.idle = true;
+      this.emit('change');
+    }
+  }
+
+  wake() {
+    if (!this.running || !this.suspended) return;
+    this.suspended = false;
+    this.lastSampleAt = Date.now();
+    this.lastCreditedAt = Date.now();
+    this.resuming = true;
+    this.status.idle = false;
+    this.schedule(300);
+  }
+
+  clearTimer() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
   schedule(delay = null) {
-    if (!this.running) return;
+    if (!this.running || this.suspended) return;
     const wait = delay == null ? this.store.settings.sampleSeconds * 1000 : delay;
     this.timer = setTimeout(() => {
       this.tick()
         .catch((error) => {
           this.status.error = error.message;
         })
-        .finally(() => this.schedule());
+        .finally(() => {
+          const next = this.nextDelay;
+          this.nextDelay = null;
+          this.schedule(next);
+        });
     }, wait);
     if (this.timer.unref) this.timer.unref();
+  }
+
+  setIdle(next) {
+    if (this.status.idle === next) return;
+    this.status.idle = next;
+    this.emit('change');
+  }
+
+  // Why keep counting when the keyboard has been quiet: something is playing in
+  // the app in front, or a full-screen app is up (a game on a gamepad reads as
+  // idle to Windows).
+  async countWithoutInput(now, foreground) {
+    const signal = await this.mediaSignal.read(foreground);
+    this.status.mediaAvailable = signal.available;
+    this.status.media = signal.playing;
+    if (signal.playing) {
+      if (!this.mediaSince) this.mediaSince = now;
+      return now - this.mediaSince <= MEDIA_BUDGET_MS;
+    }
+    this.mediaSince = null;
+    return signal.fullscreen;
   }
 
   async tick() {
@@ -69,7 +149,7 @@ class Tracker extends EventEmitter {
 
     try {
       const settings = this.store.settings;
-      const foreground = readForeground();
+      const foreground = this.readWindow();
       if (!foreground) {
         this.status.lastSampleAt = now;
         return;
@@ -85,16 +165,62 @@ class Tracker extends EventEmitter {
       this.status.idleMs = foreground.idleMs;
       this.status.title = foreground.title;
 
-      if (previous == null) return;
-      const elapsed = (now - previous) / 1000;
-      if (!(elapsed > 0) || elapsed > settings.sampleSeconds * 3 + 2) return; // machine slept or clock jumped
-      if (settings.paused) return;
-      if (foreground.idleMs > settings.idleSeconds * 1000) return;
-      if (foreground.pid === process.pid) return;
-      if (!foreground.exePath) return;
+      if (previous == null) {
+        this.lastCreditedAt = now;
+        return;
+      }
 
-      const exe = foreground.exePath.split(/[\\/]/).pop().toLowerCase();
-      if (IGNORED_EXES.has(exe)) return;
+      const sinceSample = (now - previous) / 1000;
+      const slept = !(sinceSample > 0) || sinceSample > Math.max(MAX_TRUSTED_GAP_S, settings.sampleSeconds * 6);
+      if (slept) {
+        this.lastCreditedAt = now;
+        this.resuming = true;
+        return;
+      }
+
+      if (settings.paused) {
+        this.lastCreditedAt = now;
+        this.resuming = true;
+        this.setIdle(false);
+        return;
+      }
+
+      if (foreground.pid === process.pid) {
+        this.lastCreditedAt = now;
+        return;
+      }
+
+      const exe = foreground.exePath ? foreground.exePath.split(/[\\/]/).pop().toLowerCase() : '';
+      if (!foreground.exePath || IGNORED_EXES.has(exe)) {
+        this.lastCreditedAt = now;
+        this.setIdle(true);
+        this.nextDelay = Math.max(IDLE_POLL_MS, settings.sampleSeconds * 1000);
+        return;
+      }
+
+      let keep = foreground.idleMs < settings.idleSeconds * 1000;
+      if (keep) {
+        this.mediaSince = null;
+        this.status.media = false;
+      } else {
+        keep = await this.countWithoutInput(now, foreground);
+      }
+
+      this.setIdle(!keep);
+
+      if (!keep) {
+        this.lastCreditedAt = now;
+        this.resuming = true;
+        this.nextDelay = Math.max(IDLE_POLL_MS, settings.sampleSeconds * 1000);
+        return;
+      }
+
+      const sinceCredited = this.lastCreditedAt == null ? sinceSample : (now - this.lastCreditedAt) / 1000;
+      let seconds = Math.min(sinceCredited, sinceSample, settings.sampleSeconds * 2);
+      if (this.resuming) seconds = Math.min(seconds, settings.sampleSeconds);
+      this.resuming = false;
+      this.lastCreditedAt = now;
+      if (!(seconds > 0.2)) return;
 
       const browser = browserFor(foreground.exePath);
       const name = appName(foreground.exePath);
@@ -119,7 +245,7 @@ class Tracker extends EventEmitter {
         title: windowTitle,
         browser: browser ? browser.name : null,
         site,
-        seconds: elapsed,
+        seconds,
         at: new Date(now),
       });
       this.emit('change');

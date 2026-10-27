@@ -1,19 +1,21 @@
 {
   "name": "tally-screen-time",
   "productName": "Tally",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Local screen-time tracker: which app and which website took your day.",
   "author": "Screen",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/build-native.js && electron .",
     "demo": "electron . --demo",
+    "native": "node scripts/build-native.js",
     "make-icons": "node scripts/make-icons.js",
     "icons": "node scripts/fetch-icons.js",
     "check": "node scripts/koffi-test.js",
-    "dist": "electron-builder --win nsis --publish never",
-    "dist:dir": "electron-builder --dir"
+    "test": "node scripts/tracker-test.js",
+    "dist": "node scripts/build-native.js && electron-builder --win nsis --publish never",
+    "dist:dir": "node scripts/build-native.js && electron-builder --dir"
   },
   "dependencies": {
     "koffi": "^2.14.1",
@@ -21,7 +23,9 @@
   },
   "devDependencies": {
     "electron": "^40.0.0",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "node-addon-api": "^8.9.2",
+    "node-gyp": "^12.4.0"
   },
   "build": {
     "appId": "com.screengd.tally",
@@ -34,7 +38,11 @@
     "files": [
       "electron/**/*",
       "app/**/*",
+      "native/media/build/Release/*.node",
       "package.json"
+    ],
+    "asarUnpack": [
+      "native/media/build/Release/*.node"
     ],
     "win": {
       "target": [

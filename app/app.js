@@ -582,11 +582,14 @@
       selectRow('Sample every', 'A shorter interval is more precise; a longer one uses less power.',
         [[5, '5 seconds'], [10, '10 seconds'], [30, '30 seconds']], settings.sampleSeconds,
         (value) => saveSettings({ sampleSeconds: Number(value) })),
-      selectRow('Ignore idle time after', 'Time with no keyboard or mouse input is not counted.',
+      selectRow('Ignore idle time after', 'Nothing is counted after this long without keyboard or mouse input, unless media is playing in front.',
         [[60, '1 minute'], [120, '2 minutes'], [300, '5 minutes'], [600, '10 minutes']], settings.idleSeconds,
         (value) => saveSettings({ idleSeconds: Number(value) })),
       switchRow('Open Tally at login', 'Start hidden in the tray when you sign in to Windows.', settings.launchAtLogin,
         () => saveSettings({ launchAtLogin: !settings.launchAtLogin })),
+      snap.tracking.mediaAvailable === false
+        ? h('div', { class: 'note', text: 'Windows media sessions are not readable on this build, so idle time is measured from keyboard and mouse only.' })
+        : null,
     ]);
 
     const browsers = system.browserList || [];
@@ -746,7 +749,8 @@
     const paused = snap.settings.paused;
     const text = !tracking.supported ? 'Tracking unavailable'
       : paused ? 'Paused'
-        : tracking.lastSampleAt ? `Tracking · ${shortName(tracking.app || 'waiting')}` : 'Starting';
+        : tracking.idle ? 'Idle'
+          : tracking.lastSampleAt ? `Tracking · ${shortName(tracking.app || 'waiting')}` : 'Starting';
     host.replaceChildren(
       h('span', { class: 'dot' }),
       h('span', { class: 'state-text', text, title: text }),
@@ -754,6 +758,7 @@
         ? h('button', { type: 'button', onclick: () => saveSettings({ paused: !paused }) }, paused ? 'Resume' : 'Pause')
         : null);
     host.classList.toggle('is-paused', paused || !tracking.supported);
+    host.classList.toggle('is-idle', !paused && tracking.supported && Boolean(tracking.idle));
     const note = document.getElementById('preview-note');
     if (note) note.hidden = !tracking.demo;
   }

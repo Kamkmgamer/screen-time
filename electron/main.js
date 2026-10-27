@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -27,7 +27,7 @@ function broadcast() {
   changeTimer = setTimeout(() => {
     changeTimer = null;
     send('tally:changed', { at: Date.now() });
-  }, 4000);
+  }, 10000);
   if (changeTimer.unref) changeTimer.unref();
 }
 
@@ -253,6 +253,13 @@ if (!app.requestSingleInstanceLock()) {
       tracker.status.site = 'youtube.com';
       tracker.status.title = 'How a mechanical watch works - YouTube';
     }
+
+    // Stop the sampler outright while the screen is locked or the machine sleeps,
+    // and pick it up again without crediting the gap.
+    powerMonitor.on('lock-screen', () => tracker.suspend());
+    powerMonitor.on('suspend', () => tracker.suspend());
+    powerMonitor.on('unlock-screen', () => tracker.wake());
+    powerMonitor.on('resume', () => tracker.wake());
 
     applyLoginItem(store.settings);
     registerIpc();

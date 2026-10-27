@@ -1,28 +1,41 @@
-const koffi = require('koffi');
-const user32 = koffi.load('user32.dll');
-const kernel32 = koffi.load('kernel32.dll');
-const GetForegroundWindow = user32.func('void *GetForegroundWindow()');
-const GetWindowTextW = user32.func('int GetWindowTextW(void *hWnd, uint16_t *lpString, int nMaxCount)');
-const GetWindowThreadProcessId = user32.func('uint32_t GetWindowThreadProcessId(void *hWnd, _Out_ uint32_t *lpdwProcessId)');
-const OpenProcess = kernel32.func('void *OpenProcess(uint32_t access, bool inherit, uint32_t pid)');
-const QueryFullProcessImageNameW = kernel32.func('bool QueryFullProcessImageNameW(void *h, uint32_t flags, uint16_t *buf, _Inout_ uint32_t *size)');
-const CloseHandle = kernel32.func('bool CloseHandle(void *h)');
-const GetLastInputInfo = user32.func('bool GetLastInputInfo(_Inout_ void *plii)');
-const GetTickCount64 = kernel32.func('uint64_t GetTickCount64()');
+'use strict';
 
-const hwnd = GetForegroundWindow();
-const buf = Buffer.alloc(2048);
-const n = GetWindowTextW(hwnd, buf, 1024);
-console.log('hwnd', hwnd, 'title', buf.toString('utf16le', 0, n * 2));
-const pid = [0];
-GetWindowThreadProcessId(hwnd, pid);
-console.log('pid', pid[0]);
-const h = OpenProcess(0x1000, false, pid[0]);
-const exeBuf = Buffer.alloc(2048);
-const size = [1024];
-const ok = QueryFullProcessImageNameW(h, 0, exeBuf, size);
-console.log('ok', ok, 'size', size[0], 'exe', exeBuf.toString('utf16le', 0, size[0] * 2));
-CloseHandle(h);
-const li = Buffer.alloc(8);
-li.writeUInt32LE(8, 0);
-console.log('lastinput', GetLastInputInfo(li), 'tick', li.readUInt32LE(4), 'now', Number(GetTickCount64()));
+// Run with `npm run check`: prints what the tracker sees right now, through the
+// same calls the sampler makes. Useful when nothing is being recorded.
+const { readForeground, readFullscreenState } = require('../electron/tracker/window');
+const media = require('../electron/tracker/media');
+
+async function main() {
+  const foreground = readForeground();
+  if (!foreground) {
+    console.log('foreground  no window (not Windows, or nothing focused)');
+    return;
+  }
+  if (foreground.error) {
+    console.log('foreground  failed:', foreground.error);
+    return;
+  }
+
+  console.log('title       ', foreground.title || '(none)');
+  console.log('process     ', foreground.exePath || '(unavailable)', `pid ${foreground.pid}`);
+  console.log('app id      ', foreground.aumid || '(none)');
+  console.log('idle        ', `${Math.round(foreground.idleMs / 1000)} s since the last keyboard or mouse input`);
+
+  if (!media.available()) {
+    console.log('media       ', 'addon missing - idle falls back to keyboard and mouse alone');
+    return;
+  }
+
+  const listed = await media.sessions();
+  if (listed.error) console.log('media error ', listed.error);
+  console.log('media       ', `${listed.sessions.length} session${listed.sessions.length === 1 ? '' : 's'}`);
+  for (const row of listed.sessions) {
+    console.log('            ', row.aumid, row.playing ? 'playing' : `status ${row.status}`);
+  }
+
+  const signal = await media.read(foreground);
+  console.log('front app   ', signal.playing ? 'is playing media' : 'is not playing media');
+  console.log('full screen ', readFullscreenState() ? 'yes' : 'no');
+}
+
+main();

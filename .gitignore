@@ -2,3 +2,4 @@ node_modules/
 dist/
 .taste-skill/
 *.log
+native/media/build/

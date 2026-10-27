@@ -181,6 +181,7 @@ svg { display: block; flex: none; }
 .track-state { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--muted); }
 .track-state .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text); flex: none; }
 .track-state.is-paused .dot { background: var(--faint); }
+.track-state.is-idle .dot { background: var(--faint); }
 .track-state .state-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track-state button {
   margin-left: auto;
