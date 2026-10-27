@@ -1,6 +1,6 @@
 # Tally
 
-A local screen-time tracker for Windows. It records the app in front of you and, when that app is a browser, the site on screen. Three screens: Today, Apps, Websites.
+A local screen-time tracker for Windows. It records the app in front of you and, when that app is a browser, the site on screen. Four screens: Today, Apps, Websites and Settings.
 
 No account, no extension, no upload, no network requests. One JSON file on this PC.
 
@@ -52,7 +52,7 @@ git push origin main --tags
 - Browsers: Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Firefox and Zen.
 - History is kept for 30, 90 or 365 days, then pruned.
 
-Pause from the tray, the sidebar or the Today header. Tally can start hidden at login.
+Pause from the tray or the sidebar. Tally can start hidden at login.
 
 ## Where the data lives
 
@@ -64,7 +64,7 @@ One file, written atomically, at most every 15 seconds while tracking. Deleting 
 
 - **Windows only.** Foreground window, idle time, media sessions and the tray use Win32 and WinRT calls; there is no macOS or Linux tracker.
 - **Media detection is per app, not per tab.** A browser is credited while any session it owns is playing. A muted tab, a player that never registers with the Windows media transport, or a media addon that did not build all fall back to plain idle rules.
-- **Two hours is the ceiling for untouched media.** A video left playing in an empty room stops counting after two hours without any input, so an overnight player does not bill the whole night.
+- **Media has a ceiling.** A video left playing in an empty room stops counting after two hours without any input, so an overnight player does not bill the whole night. Settings offers 30 minutes, 1, 2 or 4 hours, or Never.
 - **Website names are a heuristic.** A browser window is matched to a recent history entry by title. Private windows, cleared history, a page whose title changed after it loaded, or no recent visit all mean the browser time is counted but the site stays unnamed. No site is guessed from the URL bar.
 - **Sampling, not events.** Each sample is credited to the window in front at that moment, so an app opened and closed between samples can be missed.
 - **Unsigned installer.** Windows SmartScreen warns on first run; there is no code-signing certificate yet.

@@ -9,6 +9,7 @@ const DEFAULTS = {
   settings: {
     sampleSeconds: 5,
     idleSeconds: 120,
+    mediaCeilingMinutes: 120, // null means never; media only counts while no input
     paused: false,
     recordWebsites: true,
     launchAtLogin: false,
@@ -79,6 +80,9 @@ class Store {
     const next = { ...this.settings, ...patch };
     next.sampleSeconds = [5, 10, 30].includes(Number(next.sampleSeconds)) ? Number(next.sampleSeconds) : 5;
     next.idleSeconds = [60, 120, 300, 600].includes(Number(next.idleSeconds)) ? Number(next.idleSeconds) : 120;
+    const ceiling = next.mediaCeilingMinutes;
+    next.mediaCeilingMinutes = ceiling === null || ceiling === 'never' || Number(ceiling) === 0 ? null
+      : [30, 60, 120, 240].includes(Number(ceiling)) ? Number(ceiling) : 120;
     next.retentionDays = [30, 90, 365].includes(Number(next.retentionDays)) ? Number(next.retentionDays) : 90;
     next.paused = Boolean(next.paused);
     next.recordWebsites = Boolean(next.recordWebsites);

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<link rel="stylesheet" href="base.css">
+</head>
+<body>
+<div class="window">
+  <aside class="rail">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <path d="M8.6 6.5v19M13.4 6.5v19M18.2 6.5v19M23 6.5v19M6.2 23.2 25.4 9.2"/>
+      </svg>
+      <div>
+        <div class="brand-name">Tally</div>
+        <div class="brand-scope">This PC · local only</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-item">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M8 4.9V8l2.1 1.3"/></svg>
+        <span>Today</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 16 16"><rect x="2.2" y="2.2" width="4.6" height="4.6" rx="1.2"/><rect x="9.2" y="2.2" width="4.6" height="4.6" rx="1.2"/><rect x="2.2" y="9.2" width="4.6" height="4.6" rx="1.2"/><rect x="9.2" y="9.2" width="4.6" height="4.6" rx="1.2"/></svg>
+        <span>Apps</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M2.6 8h10.8M8 2.4c1.5 1.5 2.2 3.4 2.2 5.6S9.5 12.1 8 13.6C6.5 12.1 5.8 10.2 5.8 8S6.5 3.9 8 2.4Z"/></svg>
+        <span>Websites</span>
+      </div>
+      <div class="nav-item on">
+        <svg viewBox="0 0 16 16"><path d="M2.5 5h5M10.8 5h2.7M2.5 11h2.7M8.5 11h5"/><circle cx="9.2" cy="5" r="1.5"/><circle cx="6.9" cy="11" r="1.5"/></svg>
+        <span>Settings</span>
+      </div>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="state">
+        <div class="state-head"><span class="dot hollow"></span><span class="state-label">Media limit reached</span></div>
+        <p class="state-why">Two hours without input. Counting resumes when you touch the keyboard.</p>
+        <button class="state-action">Pause recording</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="page">
+    <header class="page-head">
+      <div>
+        <div class="eyebrow">Tally 1.1.0 · Windows x64</div>
+        <h1>Settings</h1>
+      </div>
+      <div class="head-right">
+        <div class="stamp">Nothing leaves this PC</div>
+      </div>
+    </header>
+
+    <div class="settings">
+      <aside class="index">
+        <a class="on"><span class="n num">01</span><span>Recording</span></a>
+        <a><span class="n num">02</span><span>Websites</span></a>
+        <a><span class="n num">03</span><span>Data</span></a>
+        <a><span class="n num">04</span><span>About</span></a>
+      </aside>
+
+      <section class="panel">
+        <div class="group">
+          <div class="group-head">
+            <span class="group-n num">01</span>
+            <span class="group-t">Recording</span>
+            <span class="group-m num">Media sessions readable</span>
+          </div>
+
+          <div class="readout">
+            <div>
+              <span class="k">State</span>
+              <span class="v state">Idle</span>
+            </div>
+            <div>
+              <span class="k">Last sample</span>
+              <span class="v num">18:47:12</span>
+            </div>
+            <div>
+              <span class="k">Idle poll</span>
+              <span class="v num">20 s</span>
+            </div>
+            <div>
+              <span class="k">Media sessions</span>
+              <span class="v num">2 detected</span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-t">Record screen time</div>
+              <div class="row-d">Pause any time from the sidebar; nothing is deleted.</div>
+            </div>
+            <div class="row-r"><span class="switch on"></span></div>
+          </div>
+
+          <div class="row">
+            <div>
+              <div class="row-t">Open Tally at login</div>
+              <div class="row-d">Start hidden in the tray when you sign in to Windows.</div>
+            </div>
+            <div class="row-r"><span class="switch"></span></div>
+          </div>
+
+          <div class="fields">
+            <div class="field">
+              <div class="k">Sample every</div>
+              <div class="select"><span>5 seconds</span><svg viewBox="0 0 9 9"><path d="m2 3.5 2.5 2.5L7 3.5"/></svg></div>
+            </div>
+            <div class="field">
+              <div class="k">Ignore idle time after</div>
+              <div class="select"><span>2 minutes</span><svg viewBox="0 0 9 9"><path d="m2 3.5 2.5 2.5L7 3.5"/></svg></div>
+            </div>
+            <div class="field">
+              <div class="k">Stop counting media after</div>
+              <div class="select"><span>2 hours</span><svg viewBox="0 0 9 9"><path d="m2 3.5 2.5 2.5L7 3.5"/></svg></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-head">
+            <span class="group-n num">02</span>
+            <span class="group-t">Websites</span>
+            <span class="group-m">4 browsers found</span>
+          </div>
+
+          <div class="row" style="border-top:0">
+            <div>
+              <div class="row-t">Record website names</div>
+              <div class="row-d">Copies each browser's history to a temporary folder, matches the window title, then deletes the copy.</div>
+            </div>
+            <div class="row-r"><span class="switch on"></span></div>
+          </div>
+
+          <div class="browsers">
+            <div class="browser">
+              <img class="glyph" src="../../app/icons/chrome.svg" alt="">
+              <span class="bn">Google Chrome</span>
+              <span class="check"><svg viewBox="0 0 9 9"><path d="m1.5 4.5 2 2 4-4"/></svg></span>
+            </div>
+            <div class="browser">
+              <img class="glyph" src="../../app/icons/edge.svg" alt="">
+              <span class="bn">Microsoft Edge</span>
+              <span class="check"><svg viewBox="0 0 9 9"><path d="m1.5 4.5 2 2 4-4"/></svg></span>
+            </div>
+            <div class="browser">
+              <img class="glyph" src="../../app/icons/firefox.svg" alt="">
+              <span class="bn">Firefox</span>
+              <span class="check"><svg viewBox="0 0 9 9"><path d="m1.5 4.5 2 2 4-4"/></svg></span>
+            </div>
+            <div class="browser">
+              <img class="glyph" src="../../app/icons/zen.svg" alt="">
+              <span class="bn">Zen Browser</span>
+              <span class="check"><svg viewBox="0 0 9 9"><path d="m1.5 4.5 2 2 4-4"/></svg></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-head">
+            <span class="group-n num">03</span>
+            <span class="group-t">Data</span>
+            <span class="group-m num">268 KB on disk</span>
+          </div>
+
+          <div class="row" style="border-top:0;height:44px">
+            <div>
+              <div class="row-t">Keep history for</div>
+              <div class="row-d">Older days are deleted automatically.</div>
+            </div>
+            <div class="row-r">
+              <div class="select" style="min-width:96px"><span>90 days</span><svg viewBox="0 0 9 9"><path d="m2 3.5 2.5 2.5L7 3.5"/></svg></div>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div><div class="k">Days stored</div><div class="v num">42</div></div>
+            <div><div class="k">Oldest day</div><div class="v num">17 Sep</div></div>
+            <div><div class="k">File</div><div class="v num" style="font-size:10.5px">%APPDATA%\Tally\tally-data.json</div></div>
+          </div>
+
+          <div class="row" style="height:38px">
+            <div>
+              <div class="row-t" style="color:var(--negative)">Delete all data</div>
+              <div class="row-d">Removes every day, then starts empty. It cannot be undone.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-foot">
+          <span>Tally 1.1.0</span>
+          <span class="num">build 1f1c008</span>
+          <span class="link">Release notes</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

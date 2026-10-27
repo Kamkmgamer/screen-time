@@ -46,9 +46,18 @@ function demoBrowserList() {
   }));
 }
 
+// The sample day is a working day, so the preview pins its clock to the end of
+// that day. At 00:30 the chart would otherwise claim nothing happened yet.
+function demoNow() {
+  const date = new Date();
+  date.setHours(18, 47, 0, 0);
+  return date;
+}
+
 function snapshot() {
+  const now = DEMO ? demoNow() : new Date();
   const today = store.aggregate(1);
-  const yesterdayDate = new Date();
+  const yesterdayDate = new Date(now);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   const yesterday = store.aggregate(1, yesterdayDate);
   const week = store.aggregate(7);
@@ -58,7 +67,7 @@ function snapshot() {
   try { fileSize = fs.statSync(store.file).size; } catch { fileSize = 0; }
   if (DEMO) fileSize = Buffer.byteLength(JSON.stringify(store.data.days));
   return {
-    now: new Date().toISOString(),
+    now: now.toISOString(),
     todayKey: todayKey(),
     today,
     yesterday,
@@ -72,6 +81,7 @@ function snapshot() {
     },
     system: {
       platform: process.platform,
+      arch: process.arch,
       version: app.getVersion(),
       dataPath: store.file,
       browserList: DEMO ? demoBrowserList() : browsers.browserAvailability(),
@@ -90,6 +100,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: shotWidth || 1240,
     height: shotHeight || 860,
+    useContentSize: Boolean(SCREENSHOT),
     minWidth: shotWidth ? 240 : 880,
     minHeight: shotHeight ? 320 : 640,
     show: false,
@@ -126,13 +137,9 @@ function createWindow() {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
         try {
-          if (process.env.TALLY_MENU === '1') {
-            await win.webContents.executeJavaScript("document.getElementById('menu-btn').click()");
-            await new Promise((resolve) => setTimeout(resolve, 320));
-          }
           if (process.env.TALLY_SCROLL === '1') {
             win.show();
-            await win.webContents.executeJavaScript('window.scrollTo(0, document.body.scrollHeight)');
+            await win.webContents.executeJavaScript("document.getElementById('view').scrollTo(0, document.getElementById('view').scrollHeight)");
             await new Promise((resolve) => setTimeout(resolve, 320));
           }
           if (process.env.TALLY_DIALOG === '1') {
@@ -248,10 +255,15 @@ if (!app.requestSingleInstanceLock()) {
     tracker.on('change', broadcast);
     if (!DEMO && !SCREENSHOT) tracker.start();
     else if (DEMO) {
-      tracker.status.lastSampleAt = Date.now();
+      tracker.status.lastSampleAt = demoNow().getTime();
       tracker.status.app = 'Google Chrome';
       tracker.status.site = 'youtube.com';
       tracker.status.title = 'How a mechanical watch works - YouTube';
+      tracker.status.reason = 'media';
+      tracker.status.idle = false;
+      tracker.status.media = true;
+      tracker.status.mediaSessions = 2;
+      tracker.status.mediaAvailable = true;
     }
 
     // Stop the sampler outright while the screen is locked or the machine sleeps,

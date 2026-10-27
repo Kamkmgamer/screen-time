@@ -12,10 +12,10 @@ const IGNORED_EXES = new Set(['logonui.exe', 'lockapp.exe', 'screensaver.scr', '
 // every twenty seconds is enough to notice a video starting or a hand on a key.
 const IDLE_POLL_MS = 20 * 1000;
 
-// A player left running in an empty room should not bill the whole night. After
-// two hours of media with no input at all, the sample has to see a real person
-// again before it keeps counting.
-const MEDIA_BUDGET_MS = 2 * 60 * 60 * 1000;
+// A player left running in an empty room should not bill the whole night. The
+// ceiling is a setting (mediaCeilingMinutes; null means never), defaulting to
+// two hours of media with no input at all before a real person has to appear.
+const DEFAULT_MEDIA_CEILING_MINUTES = 120;
 
 // A gap longer than this means the machine slept, not that time passed quietly.
 const MAX_TRUSTED_GAP_S = 120;
@@ -46,7 +46,9 @@ class Tracker extends EventEmitter {
       idleMs: 0,
       idle: false,
       media: false,
+      mediaSessions: null,
       mediaAvailable: mediaSignal.available ? mediaSignal.available() : false,
+      reason: 'starting',
       error: null,
     };
   }
@@ -58,6 +60,7 @@ class Tracker extends EventEmitter {
     this.lastSampleAt = Date.now();
     this.lastCreditedAt = Date.now();
     this.resuming = true;
+    this.mediaSince = null;
     this.schedule(300);
     if (!this.status.supported) {
       this.status.error = 'Foreground-app tracking currently runs on Windows.';
@@ -81,6 +84,10 @@ class Tracker extends EventEmitter {
     if (!this.running || this.suspended) return;
     this.suspended = true;
     this.clearTimer();
+    this.mediaSince = null;
+    this.status.media = false;
+    this.status.mediaSessions = null;
+    this.status.reason = 'idle';
     if (!this.status.idle) {
       this.status.idle = true;
       this.emit('change');
@@ -93,7 +100,9 @@ class Tracker extends EventEmitter {
     this.lastSampleAt = Date.now();
     this.lastCreditedAt = Date.now();
     this.resuming = true;
+    this.mediaSince = null;
     this.status.idle = false;
+    this.status.reason = 'starting';
     this.schedule(300);
   }
 
@@ -125,19 +134,37 @@ class Tracker extends EventEmitter {
     this.emit('change');
   }
 
+  // The sidebar names the cause, not just the flag: an idle desk and a player
+  // left running both stop the total, but only one of them needs explaining.
+  setReason(next) {
+    if (this.status.reason === next) return;
+    this.status.reason = next;
+    this.emit('change');
+  }
+
+  mediaCeilingMs() {
+    const minutes = this.store.settings.mediaCeilingMinutes;
+    if (minutes === null || minutes === 'never') return null;
+    const value = minutes === undefined ? DEFAULT_MEDIA_CEILING_MINUTES : Number(minutes);
+    return value > 0 ? value * 60 * 1000 : null;
+  }
+
   // Why keep counting when the keyboard has been quiet: something is playing in
   // the app in front, or a full-screen app is up (a game on a gamepad reads as
-  // idle to Windows).
+  // idle to Windows). Returns the reason the sample counts, or why it does not.
   async countWithoutInput(now, foreground) {
     const signal = await this.mediaSignal.read(foreground);
     this.status.mediaAvailable = signal.available;
     this.status.media = signal.playing;
+    this.status.mediaSessions = Number.isFinite(signal.sessions) ? signal.sessions : null;
     if (signal.playing) {
       if (!this.mediaSince) this.mediaSince = now;
-      return now - this.mediaSince <= MEDIA_BUDGET_MS;
+      const ceiling = this.mediaCeilingMs();
+      if (ceiling !== null && now - this.mediaSince > ceiling) return 'limit';
+      return 'media';
     }
     this.mediaSince = null;
-    return signal.fullscreen;
+    return signal.fullscreen ? 'fullscreen' : 'idle';
   }
 
   async tick() {
@@ -157,6 +184,7 @@ class Tracker extends EventEmitter {
       if (foreground.error) {
         this.status.error = foreground.error;
         this.status.lastSampleAt = now;
+        this.setReason('error');
         return;
       }
 
@@ -167,6 +195,7 @@ class Tracker extends EventEmitter {
 
       if (previous == null) {
         this.lastCreditedAt = now;
+        this.setReason('starting');
         return;
       }
 
@@ -175,18 +204,24 @@ class Tracker extends EventEmitter {
       if (slept) {
         this.lastCreditedAt = now;
         this.resuming = true;
+        this.setReason('starting');
         return;
       }
 
       if (settings.paused) {
         this.lastCreditedAt = now;
         this.resuming = true;
+        this.mediaSince = null;
+        this.status.media = false;
+        this.status.mediaSessions = null;
         this.setIdle(false);
+        this.setReason('paused');
         return;
       }
 
       if (foreground.pid === process.pid) {
         this.lastCreditedAt = now;
+        this.setReason('self');
         return;
       }
 
@@ -194,19 +229,25 @@ class Tracker extends EventEmitter {
       if (!foreground.exePath || IGNORED_EXES.has(exe)) {
         this.lastCreditedAt = now;
         this.setIdle(true);
+        this.setReason('idle');
         this.nextDelay = Math.max(IDLE_POLL_MS, settings.sampleSeconds * 1000);
         return;
       }
 
+      let reason = 'recording';
       let keep = foreground.idleMs < settings.idleSeconds * 1000;
       if (keep) {
         this.mediaSince = null;
         this.status.media = false;
+        this.status.mediaSessions = null;
       } else {
-        keep = await this.countWithoutInput(now, foreground);
+        const hold = await this.countWithoutInput(now, foreground);
+        keep = hold === 'media' || hold === 'fullscreen';
+        reason = hold === 'limit' ? 'limit' : hold === 'idle' ? 'idle' : hold === 'media' ? 'media' : 'recording';
       }
 
       this.setIdle(!keep);
+      this.setReason(reason);
 
       if (!keep) {
         this.lastCreditedAt = now;

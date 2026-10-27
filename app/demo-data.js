@@ -38,7 +38,7 @@
     ['linear.app', 'Tally - Linear', 'Google Chrome', 900],
     ['developer.mozilla.org', 'Intl.NumberFormat - MDN Web Docs', 'Google Chrome', 600],
     ['news.ycombinator.com', 'Hacker News', 'Google Chrome', 480],
-    ['figma.com', 'Tally app screens - Figma', 'Google Chrome', 420],
+    ['figma.com', 'Tally app screens - Figma', 'Google Chrome', 180],
   ];
 
   // 07:00 to 17:00, in seconds
@@ -147,7 +147,7 @@
       totalSeconds: total,
       browserSeconds,
       firstAt: at(date, 7, 5),
-      lastAt: offset === 0 ? new Date().toISOString() : at(date, 18, 2),
+      lastAt: offset === 0 ? at(date, 18, 47) : at(date, 18, 2),
     };
   }
 

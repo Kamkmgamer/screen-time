@@ -110,6 +110,7 @@ async function read(foreground) {
     error: result.error,
     playing: ownsPlayingSession(result.sessions, foreground || {}),
     fullscreen: readFullscreenState(),
+    sessions: result.sessions.length,
   };
 }
 

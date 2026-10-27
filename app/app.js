@@ -1,30 +1,26 @@
 (function () {
   'use strict';
 
-  const ICONS = {
-    pause: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.4 3.4v9.2M10.6 3.4v9.2"/></svg>',
-    play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 3.4 12 8l-6.8 4.6Z"/></svg>',
-    refresh: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13.2 3.4V6.2h-2.8"/></svg>',
-    close: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>',
-  };
+  const CHECK = '<svg viewBox="0 0 11 11" aria-hidden="true"><path d="m1.6 5.6 2.4 2.4L9.4 2.6"/></svg>';
+  const CHEVRON = '<svg class="chev" viewBox="0 0 13 13" aria-hidden="true"><path d="m3 5 3.5 3.5L10 5"/></svg>';
+  const EXTERNAL = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5h5.5V8M9.5 2.5 3.5 8.5"/></svg>';
 
   const MONTHS = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-  const SHORT_MONTHS = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+  const SHORT_DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+  const MONTH = new Intl.DateTimeFormat('en-GB', { month: 'long' });
   const TIME = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const TIME_WITH_SECONDS = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   const state = {
     snapshot: null,
     route: 'today',
-    ranges: { apps: 1, sites: 1 },
+    ranges: { apps: 7, sites: 7 },
+    openApp: undefined,
+    openGroup: 'recording',
     savedAt: 0,
-    menuOpen: false,
   };
 
   const view = document.getElementById('view');
-  const sidebar = document.getElementById('sidebar');
-  const scrim = document.getElementById('scrim');
-  const menuBtn = document.getElementById('menu-btn');
-  const sheetClose = document.getElementById('sheet-close');
   const dialog = document.getElementById('confirm-dialog');
   const api = window.tally || createDemoApi();
 
@@ -48,12 +44,6 @@
       node.append(child instanceof Node ? child : document.createTextNode(String(child)));
     }
     return node;
-  }
-
-  function icon(name) {
-    const span = h('span', { class: 'icon', 'aria-hidden': 'true' });
-    span.innerHTML = ICONS[name] || '';
-    return span;
   }
 
   // Brand glyphs are bundled monochrome SVGs in app/icons (source: thesvg.org),
@@ -181,35 +171,30 @@
 
   const BROWSER_GLYPHS = ['chrome', 'edge', 'brave', 'vivaldi', 'opera', 'opera-gx', 'firefox', 'zen', 'arc'];
 
-  function glyph(key) {
-    if (!key) return h('span', { class: 'glyph glyph-empty', 'aria-hidden': 'true' });
-    return h('span', { class: 'glyph', 'aria-hidden': 'true', style: `--glyph: url("icons/${key}.svg")` });
+  function glyph(key, className = 'glyph') {
+    if (!key) return h('span', { class: `${className} glyph-empty`, 'aria-hidden': 'true' });
+    return h('span', { class: className, 'aria-hidden': 'true', style: `--glyph: url("icons/${key}.svg")` });
   }
 
-  function appGlyph(name) {
-    return glyph(APP_GLYPHS[String(name || '').toLowerCase()] || null);
+  function appGlyph(name, className) {
+    return glyph(APP_GLYPHS[String(name || '').toLowerCase()] || null, className);
   }
 
-  function siteGlyph(domain) {
+  function siteGlyph(domain, className) {
     const host = String(domain || '').toLowerCase().replace(/^www\./, '');
     const parts = host.split('.');
     for (let i = 0; i < parts.length - 1; i++) {
       const key = SITE_GLYPHS[parts.slice(i).join('.')];
-      if (key) return glyph(key);
+      if (key) return glyph(key, className);
     }
-    return glyph(null);
+    return glyph(null, className);
   }
 
-  function browserGlyph(id) {
-    return glyph(BROWSER_GLYPHS.includes(id) ? id : null);
+  function browserGlyph(id, className) {
+    return glyph(BROWSER_GLYPHS.includes(id) ? id : null, className);
   }
 
-  function pctText(part, whole) {
-    if (!whole || !part) return '0%';
-    const value = (part / whole) * 100;
-    if (value < 0.5) return '<1%';
-    return `${Math.round(value)}%`;
-  }
+  /* ---------- figures ---------- */
 
   function durationParts(seconds) {
     const raw = Math.max(0, Number(seconds) || 0);
@@ -230,18 +215,37 @@
     return `${p.m} m`;
   }
 
-  function durationNode(seconds) {
+  function figure(seconds) {
     const p = durationParts(seconds);
-    const node = h('span', { class: 'kpi-value' });
+    const fragment = document.createDocumentFragment();
     if (p.under) {
-      node.append(h('span', { text: '< 1' }), h('span', { class: 'unit', text: 'm' }));
-    } else if (p.h) {
-      node.append(h('span', { text: String(p.h) }), h('span', { class: 'unit', text: 'h' }));
-      if (p.m) node.append(h('span', { text: String(p.m) }), h('span', { class: 'unit', text: 'm' }));
-    } else {
-      node.append(h('span', { text: String(p.m) }), h('span', { class: 'unit', text: 'm' }));
+      fragment.append(h('span', { text: '< 1' }), h('span', { class: 'u', text: 'm' }));
+      return fragment;
     }
-    return node;
+    if (p.h) fragment.append(h('span', { text: String(p.h) }), h('span', { class: 'u', text: 'h' }));
+    if (p.m || !p.h) fragment.append(h('span', { text: String(p.m) }), h('span', { class: 'u', text: 'm' }));
+    return fragment;
+  }
+
+  function share(part, whole) {
+    const value = whole ? (Number(part) / Number(whole)) * 100 : 0;
+    return {
+      value,
+      text: value > 0 && value < 0.5 ? '<1%' : `${Math.round(value)}%`,
+      width: value > 0 ? Math.max(0.6, Math.min(100, value)) : 0,
+    };
+  }
+
+  function pctText(part, whole) {
+    return share(part, whole).text;
+  }
+
+  function plural(count, one, many) {
+    return `${count} ${count === 1 ? one : many}`;
+  }
+
+  function shortName(name) {
+    return String(name || '').replace(/^(Google|Microsoft|Mozilla)\s+/, '');
   }
 
   function timeOf(iso) {
@@ -249,6 +253,13 @@
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return null;
     return TIME.format(date);
+  }
+
+  function clockOf(ms, withSeconds = false) {
+    if (!ms) return '—';
+    const date = new Date(Number(ms));
+    if (Number.isNaN(date.getTime())) return '—';
+    return (withSeconds ? TIME_WITH_SECONDS : TIME).format(date);
   }
 
   function dayLabel(key) {
@@ -260,7 +271,7 @@
   function shortDayLabel(key) {
     if (!key) return '';
     const [y, m, d] = key.split('-').map(Number);
-    return SHORT_MONTHS.format(new Date(y, m - 1, d, 12));
+    return SHORT_DAY.format(new Date(y, m - 1, d, 12));
   }
 
   function keyToDate(key) {
@@ -268,68 +279,64 @@
     return new Date(y, m - 1, d, 12);
   }
 
-  function plural(count, one, many) {
-    return `${count} ${count === 1 ? one : many}`;
+  function rangeLabel(days, todayKey) {
+    if (days === 1) return dayLabel(todayKey);
+    const end = keyToDate(todayKey);
+    const start = new Date(end);
+    start.setDate(end.getDate() - (days - 1));
+    if (start.getMonth() === end.getMonth()) return `${start.getDate()} – ${end.getDate()} ${MONTH.format(end)}`;
+    return `${start.getDate()} ${MONTH.format(start)} – ${end.getDate()} ${MONTH.format(end)}`;
   }
 
-  function shortName(name) {
-    return String(name || '').replace(/^(Google|Microsoft|Mozilla)\s+/, '');
+  function formatBytes(bytes) {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
-
-  /* ---------- data helpers ---------- */
 
   function totalOf(rows) {
-    return rows.reduce((sum, row) => sum + (row.seconds || 0), 0);
+    return rows.reduce((sum, row) => sum + (Number(row.seconds) || 0), 0);
   }
 
-  function topSiteLine(data) {
-    const top = data.sites[0];
-    if (!top) return null;
-    return `${top.domain} took ${durationText(top.seconds)}, ${pctText(top.seconds, data.browserSeconds)} of browser time`;
+  function mediaCeilingLabel(minutes) {
+    if (minutes === null || minutes === undefined) return 'never';
+    if (minutes < 60) return `${minutes} minutes`;
+    if (minutes === 60) return '1 hour';
+    return `${minutes / 60} hours`;
   }
 
   /* ---------- page shell ---------- */
 
-  function titleRow({ title, sub, actions }) {
-    return h('div', { class: 'title-row' },
+  function pageHead({ eyebrow, title, right }) {
+    return h('header', { class: 'page-head' },
       h('div', null,
-        h('h1', { text: title }),
-        sub ? h('p', { class: 'sub', text: sub }) : null),
-      actions ? h('div', { class: 'title-actions' }, actions) : null);
+        h('div', { class: 'eyebrow', text: eyebrow }),
+        h('h1', { text: title })),
+      right ? h('div', { class: 'head-right' }, right) : null);
   }
 
-  function titleActions(compact) {
-    if (!state.snapshot) return null;
-    const paused = state.snapshot.settings.paused;
-    const stampText = paused ? 'Paused' : (timeOf(state.snapshot.tracking.lastSampleAt) ? `Updated ${timeOf(state.snapshot.tracking.lastSampleAt)}` : 'Just now');
-    return [
-      h('span', { class: 'stamp', text: stampText }),
-      h('button', {
-        class: 'icon-btn', type: 'button', 'aria-label': 'Refresh data', title: 'Refresh',
-        onclick: () => refresh(),
-      }, icon('refresh')),
-      compact ? null : h('button', {
-        class: 'btn btn-secondary', type: 'button',
-        onclick: () => saveSettings({ paused: !paused }),
-      }, h('span', { class: 'btn-icon', html: paused ? ICONS.play : ICONS.pause }), paused ? 'Resume tracking' : 'Pause tracking'),
-    ];
+  function stampText(snap) {
+    if (snap.settings.paused) return 'Paused';
+    return snap.tracking.lastSampleAt ? `Updated ${clockOf(snap.tracking.lastSampleAt)}` : 'Just now';
   }
 
   function rangeControl(kind, value) {
-    const options = [[1, 'Today'], [7, '7 days'], [30, '30 days']];
-    return h('div', { class: 'segmented', role: 'group', 'aria-label': 'Time range' },
+    const options = [[1, '1 day'], [7, '7 days'], [30, '30 days']];
+    return h('div', { class: 'seg', role: 'group', 'aria-label': 'Time range' },
       options.map(([days, label]) => h('button', {
         type: 'button',
+        class: value === days ? 'on' : null,
         'aria-pressed': String(value === days),
         onclick: () => {
           state.ranges[kind] = days;
+          if (kind === 'apps') state.openApp = undefined;
           render();
         },
       }, label)));
   }
 
-  function emptyBlock(lines, action) {
-    return h('div', { class: 'empty' },
+  function listEmpty(lines, action) {
+    return h('div', { class: 'list-empty' },
       lines.map((line) => h('p', { text: line })),
       action || null);
   }
@@ -338,134 +345,194 @@
 
   function renderToday(snap) {
     const data = snap.today;
-    const paused = snap.settings.paused;
     const apps = data.apps;
     const sites = data.sites;
     const yesterday = snap.yesterday || { totalSeconds: 0 };
-    const topApp = apps[0] || null;
+    const now = new Date(snap.now || Date.now());
 
-    let finding;
-    if (paused) finding = 'Tracking is paused.';
-    else if (topSiteLine(data)) finding = topSiteLine(data);
-    else if (topApp) finding = `${topApp.name} took ${durationText(topApp.seconds)}, ${pctText(topApp.seconds, data.totalSeconds)} of screen time`;
-    else finding = 'Tally records the app in front of you every few seconds.';
-
-    const dateLong = dayLabel(snap.todayKey);
-
-    const kpis = h('div', { class: 'kpis' },
-      kpi('Screen time today', durationNode(data.totalSeconds),
-        yesterday.totalSeconds > 0 ? `Yesterday ${durationText(yesterday.totalSeconds)}` : 'First day recorded'),
-      kpi('Apps used', h('span', { class: 'kpi-value', text: String(apps.length) }),
-        topApp ? `Top: ${topApp.name}` : 'None yet'),
-      kpi('Websites', h('span', { class: 'kpi-value', text: String(sites.length) }),
-        sites.length ? `Top: ${sites[0].domain}` : (snap.settings.recordWebsites ? 'None yet' : 'Turned off')),
-      kpi('In browsers', durationNode(data.browserSeconds),
-        data.totalSeconds ? `${pctText(data.browserSeconds, data.totalSeconds)} of screen time` : 'No browser yet'));
-
-    const appsPanel = h('section', { class: 'panel span-7', 'aria-labelledby': 'apps-heading' },
-      h('header', null,
-        h('h2', { id: 'apps-heading', text: 'Apps' }),
-        h('span', { class: 'meta', text: apps.length ? `${Math.min(apps.length, 6)} of ${apps.length}` : 'Today' }),
-        h('div', { class: 'head-right' },
-          h('button', { class: 'card-link', type: 'button', onclick: () => go('apps') }, 'All apps'))),
-      apps.length
-        ? h('ol', { class: 'ranks' }, apps.slice(0, 6).map((app) => rankRow({
-          glyph: appGlyph(app.name),
-          name: app.name,
-          detail: app.title || 'No window title',
-          value: durationText(app.seconds),
-          share: pctText(app.seconds, data.totalSeconds),
-          width: app.seconds / (apps[0].seconds || 1),
-        })))
-        : emptyBlock(paused
-          ? ['Tracking is paused, so nothing is being recorded.', 'Resume to start counting the app in front.'] 
-          : ['Nothing recorded yet today.', 'Open an app and Tally will list it here within a few seconds.']));
-
-    const sitesPanel = h('section', { class: 'panel span-5', 'aria-labelledby': 'sites-heading' },
-      h('header', null,
-        h('h2', { id: 'sites-heading', text: 'Websites' }),
-        h('span', { class: 'meta', text: sites.length ? `${Math.min(sites.length, 6)} of ${sites.length}` : 'Today' }),
-        h('div', { class: 'head-right' },
-          h('button', { class: 'card-link', type: 'button', onclick: () => go('sites') }, 'All sites'))),
-      sites.length
-        ? h('ol', { class: 'ranks' }, sites.slice(0, 6).map((site) => rankRow({
-          glyph: siteGlyph(site.domain),
-          name: site.domain,
-          detail: site.title || site.browser || 'Page title unavailable',
-          value: durationText(site.seconds),
-          share: pctText(site.seconds, data.browserSeconds),
-          width: site.seconds / (sites[0].seconds || 1),
-        })))
-        : sitesEmpty(snap, data));
-
-    const peak = data.hours.indexOf(Math.max(...data.hours));
-    const hasHours = data.totalSeconds > 0;
-    const chartPanel = h('section', { class: 'panel chart-panel span-12', 'aria-labelledby': 'day-heading' },
-      h('header', null,
-        h('h2', { id: 'day-heading', text: 'The day, hour by hour' }),
-        hasHours ? h('span', { class: 'meta', text: `Peak ${String(peak).padStart(2, '0')}:00` }) : null,
-        hasHours ? h('div', { class: 'head-right' }, h('span', { class: 'meta', text: 'Minutes on screen' })) : null),
-      hasHours
-        ? h('div', { class: 'chart', id: 'day-chart' })
-        : emptyBlock(['Nothing recorded yet today.', 'Open an app and Tally will draw the day here.']));
-
-    const page = h('div', null,
-      titleRow({
-        title: 'Today',
-        sub: `${dateLong} · ${finding}`,
-        actions: titleActions(),
-      }),
-      kpis,
-      h('div', { class: 'grid' }, appsPanel, sitesPanel, chartPanel));
-
-    requestAnimationFrame(() => {
-      const el = document.getElementById('day-chart');
-      if (!el || !window.Charts) return;
-      const values = data.hours.map((seconds) => Math.round(seconds / 60));
-      Charts.bars(el, {
-        labels: Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')),
-        values,
-        xAt: [0, 6, 12, 18],
-        height: 186,
-        format: (v) => `${v} m`,
-        colour: '#1d5fbf',
-      });
+    const header = pageHead({
+      eyebrow: dayLabel(snap.todayKey),
+      title: 'Today',
+      right: [h('span', { class: 'stamp num', text: stampText(snap) })],
     });
 
+    const summary = h('div', { class: 'summary' },
+      h('div', { class: 'total-block' },
+        h('div', { class: 'label', text: 'Recorded today' }),
+        h('div', { class: 'total num' }, figure(data.totalSeconds)),
+        h('div', { class: 'sub' },
+          data.browserSeconds > 0
+            ? ['Includes ', h('b', { class: 'num', text: durationText(data.browserSeconds) }), ' in browsers']
+            : (data.totalSeconds > 0 ? 'No browser time today.' : 'Nothing recorded yet today.'))),
+      h('dl', { class: 'mini' },
+        h('div', null,
+          h('dt', { text: 'Yesterday, whole day' }),
+          h('dd', { class: 'num', text: yesterday.totalSeconds ? durationText(yesterday.totalSeconds) : '—' })),
+        h('div', null,
+          h('dt', { text: 'Apps' }),
+          h('dd', { class: 'num', text: String(apps.length) })),
+        h('div', null,
+          h('dt', { text: 'Websites' }),
+          h('dd', { class: 'num', text: String(sites.length) }))));
+
+    const hours = hourBlock(data, now);
+    const lists = h('div', { class: 'lists' }, appList(data, snap), siteList(data, snap));
+
+    const page = h('div', { class: 'page-inner' },
+      header,
+      h('section', { class: 'sheet' },
+        summary,
+        h('div', { class: 'rule' }),
+        hours,
+        h('div', { class: 'rule' }),
+        lists));
     return page;
   }
 
-  function kpi(label, valueNode, note) {
-    return h('div', { class: 'kpi' },
-      h('div', { class: 'kpi-label', text: label }),
-      valueNode,
-      h('div', { class: 'kpi-note', text: note }));
+  function hourBlock(data, now) {
+    const hasData = data.totalSeconds > 0;
+    const nowHour = now.getHours();
+    const futureWidth = Math.max(0, ((23 - nowHour) / 24) * 100);
+    const columns = [];
+
+    for (let hour = 0; hour < 24; hour++) {
+      const seconds = Number((data.hours || [])[hour]) || 0;
+      const minutes = Math.min(60, seconds / 60);
+      const live = hour <= nowHour;
+      const height = live && minutes > 0 ? Math.max(1.5, Math.min(100, (minutes / 60) * 100)) : 0;
+      columns.push(h('div', { class: 'col' },
+        h('div', {
+          class: `bar${hour === nowHour ? ' now' : ''}`,
+          style: `height:${height}%`,
+          title: `${String(hour).padStart(2, '0')}:00 – ${Math.round(seconds / 60)} m`,
+          role: 'presentation',
+        })));
+    }
+
+    const peak = hasData ? data.hours.indexOf(Math.max(...data.hours)) : -1;
+    const meta = hasData
+      ? h('div', { class: 'hours-meta' },
+        h('span', { class: 'num', text: `Busiest ${String(peak).padStart(2, '0')}–${String((peak + 1) % 24).padStart(2, '0')} · ${Math.round(data.hours[peak] / 60)} m` }),
+        h('span', { class: 'faint num', text: `First ${timeOf(data.firstAt) || '—'} · Last ${timeOf(data.lastAt) || '—'}` }))
+      : h('div', { class: 'hours-meta' }, h('span', { class: 'faint', text: 'Nothing recorded yet today.' }));
+
+    const labelAt = (hour) => hour % 3 === 0;
+
+    const axis = h('div', { class: 'axis', 'aria-hidden': 'true' },
+      Array.from({ length: 24 }, (_, hour) => h('div', { class: `cell${labelAt(hour) ? ' on' : ''}` },
+        labelAt(hour) ? h('span', { text: String(hour).padStart(2, '0') }) : null)));
+
+    return h('div', { class: 'hours' },
+      h('div', { class: 'hours-head' },
+        h('div', { class: 'hours-title', text: 'By hour' }),
+        meta),
+      h('div', {
+        class: 'chart',
+        role: 'img',
+        'aria-label': hasData
+          ? `Minutes recorded each hour today. Busiest hour ${String(peak).padStart(2, '0')}:00 with ${Math.round(data.hours[peak] / 60)} minutes.`
+          : 'No minutes recorded yet today.',
+      },
+        futureWidth ? h('div', { class: 'future', style: `width:${futureWidth}%`, 'aria-hidden': 'true' }) : null,
+        columns),
+      axis);
   }
 
-  function rankRow({ name, detail, value, share, width, glyph: mark }) {
-    return h('li', { class: 'rank-row' },
-      h('div', { class: 'rank-main' },
-        mark || null,
-        h('div', { class: 'rank-body' },
-          h('div', { class: 'rank-line' },
-            h('span', { class: 'rank-name', text: name, title: name }),
-            h('span', { class: 'rank-value', text: value })),
-          h('div', { class: 'rank-subline' },
-            h('span', { class: 'rank-sub', text: detail, title: detail }),
-            h('span', { class: 'rank-share', text: share })))),
-      h('div', { class: 'bar' }, h('i', { style: `width:${Math.max(2, Math.round(width * 100))}%` })));
+  function appList(data, snap) {
+    const total = data.totalSeconds;
+    const apps = data.apps;
+    const shown = apps.slice(0, 6);
+    const rest = apps.slice(6);
+    const restSeconds = totalOf(rest);
+    const rows = shown.map((app) => itemRow({
+      glyph: appGlyph(app.name),
+      name: app.name,
+      seconds: app.seconds,
+      whole: total,
+    }));
+
+    if (restSeconds > 0.5) {
+      rows.push(itemRow({
+        glyph: glyph(null),
+        name: 'Other apps',
+        seconds: restSeconds,
+        whole: total,
+        other: true,
+      }));
+    }
+
+    return h('section', { class: 'list' },
+      h('div', { class: 'list-head' },
+        h('div', { class: 'list-title', text: 'Apps' }),
+        h('div', { class: 'list-meta', text: 'Share of recorded time' })),
+      apps.length
+        ? rows
+        : listEmpty([snap.settings.paused
+          ? 'Tracking is paused, so nothing is being recorded.'
+          : 'Nothing recorded yet today. Open an app and Tally will list it here.']));
   }
 
-  function sitesEmpty(snap, data) {
+  function siteList(data, snap) {
+    const total = data.browserSeconds;
+    const sites = data.sites;
+    const shown = sites.slice(0, 6);
+    const rest = sites.slice(6);
+    const restSeconds = totalOf(rest);
+    const namedSeconds = totalOf(sites);
+    const unattributed = Math.max(0, total - namedSeconds);
+    const rows = shown.map((site) => itemRow({
+      glyph: siteGlyph(site.domain),
+      name: site.domain,
+      seconds: site.seconds,
+      whole: total,
+    }));
+
+    if (restSeconds > 0.5) {
+      rows.push(itemRow({
+        glyph: glyph(null),
+        name: 'Other sites',
+        seconds: restSeconds,
+        whole: total,
+        other: true,
+      }));
+    }
+    if (unattributed > 0.5) {
+      rows.push(itemRow({
+        glyph: glyph(null),
+        name: 'No site name',
+        seconds: unattributed,
+        whole: total,
+        other: true,
+      }));
+    }
+
+    let empty = null;
     if (!snap.settings.recordWebsites) {
-      return emptyBlock(
-        ['Website names are turned off.', 'Tally still counts every browser as an app.'],
-        h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => go('settings') }, 'Turn on website names'));
+      empty = listEmpty(
+        ['Website names are turned off.', 'Browser time still counts, without a domain.'],
+        h('button', { class: 'link-btn', type: 'button', onclick: () => go('settings') }, 'Turn on website names'));
+    } else if (!total) {
+      empty = listEmpty(['No browser time yet today.', 'Time in a browser will be matched to the page it shows.']);
     }
-    if (!data.browserSeconds) {
-      return emptyBlock(['No website time yet today.', 'Time in a browser will be matched to the page it shows.']);
-    }
-    return emptyBlock(['No site named yet.', 'Tally matches the window title to a recent entry in local browser history.']);
+
+    return h('section', { class: 'list' },
+      h('div', { class: 'list-head' },
+        h('div', { class: 'list-title', text: 'Websites' }),
+        h('div', { class: 'list-meta', text: 'Share of browser time' })),
+      empty && !rows.length ? empty : rows,
+      empty && rows.length ? h('div', { class: 'list-foot' }, empty) : null);
+  }
+
+  function itemRow({ glyph: mark, name, seconds, whole, other = false }) {
+    const part = share(seconds, whole);
+    return h('div', { class: `item${other ? ' other' : ''}` },
+      mark || null,
+      h('div', { class: 'item-main' },
+        h('div', { class: 'item-line' },
+          h('span', { class: 'item-name', text: name, title: name }),
+          h('span', { class: 'item-time num', text: durationText(seconds) }),
+          h('span', { class: 'item-pct num', text: part.text })),
+        h('div', { class: 'track' }, h('i', { style: `width:${part.width}%` }))));
   }
 
   /* ---------- apps ---------- */
@@ -474,41 +541,93 @@
     const days = state.ranges.apps;
     const data = snap.ranges[days] || snap.today;
     const total = data.totalSeconds;
-    const top = data.apps[0];
+    const apps = data.apps;
 
-    const sub = total
-      ? [plural(data.apps.length, 'app', 'apps'), durationText(total), rangePhrase(data, days)].filter(Boolean).join(' · ')
-      : ['No app time recorded', rangePhrase(data, days)].filter(Boolean).join(' · ');
+    const header = pageHead({
+      eyebrow: rangeLabel(days, snap.todayKey),
+      title: 'Apps',
+      right: [rangeControl('apps', days), h('span', { class: 'stamp num', text: `${plural(apps.length, 'app', 'apps')} · Updated ${clockOf(snap.tracking.lastSampleAt)}` })],
+    });
 
-    const table = h('section', { class: 'panel span-12', 'aria-labelledby': 'apps-table-heading' },
-      h('header', null,
-        h('h2', { id: 'apps-table-heading', text: 'Time by app' }),
-        h('span', { class: 'meta', text: total ? `Top: ${top.name}` : 'Nothing yet' })),
-      data.apps.length
-        ? h('div', { class: 'table' },
-          h('div', { class: 'table-head', role: 'row' },
-            h('span', { text: 'App' }),
-            h('span', { class: 'num', text: 'Time' }),
-            h('span', { class: 'num', text: 'Share' })),
-          data.apps.map((app) => h('div', { class: 'table-row' },
-            h('div', { class: 'ident' },
-              appGlyph(app.name),
-              h('div', { class: 'ident-text' },
-                h('div', { class: 'name', text: app.name, title: app.name }),
-                h('div', { class: 'detail', text: app.title || 'No window title', title: app.title || '' }))),
-            h('div', { class: 'value', text: durationText(app.seconds) }),
-            h('div', { class: 'share', text: pctText(app.seconds, total) }))))
-        : emptyBlock(
-          ['Nothing recorded in this range.', days === 1 ? 'Today has only just started, or tracking is paused.' : 'Try a shorter range, or leave Tally running in the tray.']));
+    const top = apps.slice(0, 5);
+    const topSeconds = totalOf(top);
+    const remainder = Math.max(0, total - topSeconds);
+    const strip = total
+      ? h('div', { class: 'strip', 'aria-hidden': 'true' },
+        top.map((app, index) => h('i', {
+          style: `width:${share(app.seconds, total).width}%;background:${STRIP_COLOURS[index % STRIP_COLOURS.length]}`,
+        })),
+        remainder > 0.5 ? h('i', { style: `width:${share(remainder, total).width}%;background:#e2e6eb` }) : null)
+      : null;
 
-    return h('div', null,
-      titleRow({
-        title: 'Apps',
-        sub,
-        actions: [rangeControl('apps', days), titleActions(true)],
-      }),
-      h('div', { class: 'grid' }, table));
+    const context = h('aside', { class: 'ctx' },
+      h('div', { class: 'label', text: 'Recorded' }),
+      h('div', { class: 'big num' }, figure(total)),
+      h('div', { class: 'ctx-sub', text: total
+        ? `Across ${plural(apps.length, 'app', 'apps')}, ${days === 1 ? 'today' : `${days} days`}`
+        : 'Nothing recorded in this range' }),
+      strip,
+      total ? h('div', { class: 'ctx-legend', text: `${top.length === 1 ? '1 app holds' : `${top.length} apps hold`} ${pctText(topSeconds, total)} of recorded time.` }) : null,
+      h('div', { class: 'ctx-note', text: 'A window title is the last one seen, not a duration. Open a row to read it.' }));
+
+    const openKey = state.openApp === undefined ? (apps[0] ? apps[0].key : null) : state.openApp;
+    const rows = apps.slice(0, 8);
+    const restSeconds = Math.max(0, total - totalOf(rows));
+
+    const table = h('div', { class: 'table' },
+      h('div', { class: 'thead' },
+        h('span'),
+        h('span'),
+        h('span', { text: 'App' }),
+        h('span', { class: 'r', text: 'Time' }),
+        h('span', { class: 'lh', text: 'Share' }),
+        h('span', { class: 'r', text: '%' }),
+        h('span')),
+      apps.length
+        ? rows.map((app, index) => {
+          const open = app.key === openKey;
+          return [
+            h('button', {
+              type: 'button',
+              class: `trow${open ? ' open' : ''}`,
+              'aria-expanded': String(open),
+              onclick: () => {
+                state.openApp = open ? null : app.key;
+                render();
+              },
+            },
+            h('span', { class: 'idx num', text: String(index + 1).padStart(2, '0') }),
+            appGlyph(app.name),
+            h('span', { class: 'name', text: app.name, title: app.name }),
+            h('span', { class: 'time num', text: durationText(app.seconds) }),
+            h('span', { class: 'track' }, h('i', { style: `width:${share(app.seconds, total).width}%` })),
+            h('span', { class: 'pct num', text: pctText(app.seconds, total) }),
+            h('span', { class: 'chev-wrap', html: CHEVRON })),
+            open ? h('div', { class: 'title-row' },
+              h('span', { class: 'title-k', text: 'Last title' }),
+              h('span', { class: 'title-v', text: app.title || 'No window title recorded', title: app.title || '' }),
+              h('span', { class: 'title-t num', text: app.lastAt ? `${SHORT_DAY.format(new Date(app.lastAt))}, ${clockOf(app.lastAt)}` : '' })) : null,
+          ];
+        })
+        : h('div', { class: 'table-empty' },
+          listEmpty(['Nothing recorded in this range.', days === 1
+            ? 'Today has only just started, or tracking is paused.'
+            : 'Try a shorter range, or leave Tally running in the tray.'])),
+      apps.length && restSeconds > 0.5
+        ? h('div', { class: 'trow other' },
+          h('span', { class: 'idx num', text: String(Math.min(rows.length, 8) + 1).padStart(2, '0') }),
+          h('span', { class: 'glyph glyph-empty', 'aria-hidden': 'true' }),
+          h('span', { class: 'name', text: 'Other apps' }),
+          h('span', { class: 'time num', text: durationText(restSeconds) }),
+          h('span', { class: 'track' }, h('i', { style: `width:${share(restSeconds, total).width}%` })),
+          h('span', { class: 'pct num', text: pctText(restSeconds, total) }),
+          h('span'))
+        : null);
+
+    return h('div', { class: 'page-inner' }, header, h('div', { class: 'split' }, context, table));
   }
+
+  const STRIP_COLOURS = ['#39414b', '#5f6874', '#8b949f', '#b5bdc8', '#d8dde3'];
 
   /* ---------- websites ---------- */
 
@@ -516,58 +635,108 @@
     const days = state.ranges.sites;
     const data = snap.ranges[days] || snap.today;
     const total = data.browserSeconds;
+    const sites = data.sites;
+    const shown = sites.slice(0, 6);
+    const rest = sites.slice(6);
+    const restSeconds = totalOf(rest);
+    const namedSeconds = totalOf(sites);
+    const unattributed = Math.max(0, total - namedSeconds);
 
-    const sub = total
-      ? [plural(data.sites.length, 'site', 'sites'), `${durationText(total)} in browsers`, rangePhrase(data, days)].filter(Boolean).join(' · ')
-      : ['No website time recorded', rangePhrase(data, days)].filter(Boolean).join(' · ');
+    const header = pageHead({
+      eyebrow: rangeLabel(days, snap.todayKey),
+      title: 'Websites',
+      right: [rangeControl('sites', days), h('span', { class: 'stamp num', text: `${plural(sites.length, 'site', 'sites')} named` })],
+    });
 
-    let content;
-    if (!snap.settings.recordWebsites) {
-      content = emptyBlock(
-        ['Website names are turned off.', 'Tally still counts every browser as an app. Names come only from local browser history.'],
-        h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => go('settings') }, 'Turn on website names'));
-    } else if (!data.sites.length) {
-      content = emptyBlock(
-        total
-          ? ['Browser time recorded, but no page named yet.', 'Open a page in Chrome, Edge, Brave, Firefox or Zen and Tally will match the window to a recent history entry.']
-          : ['No website time recorded in this range.', 'Website names come from the history file of the browser in front.']);
-    } else {
-      content = h('div', { class: 'table table-sites' },
-        h('div', { class: 'table-head', role: 'row' },
-          h('span', { text: 'Site' }),
-          h('span', { text: 'Browser' }),
-          h('span', { class: 'num', text: 'Time' }),
-          h('span', { class: 'num', text: 'Share' })),
-        data.sites.map((site) => h('div', { class: 'table-row' },
-          h('div', { class: 'ident' },
-            siteGlyph(site.domain),
-            h('div', { class: 'ident-text' },
-              h('div', { class: 'name', text: site.domain, title: site.domain }),
-              h('div', { class: 'detail' },
-                h('span', { class: 'detail-browser' }, `${site.browser || 'Browser'} · `),
-                site.title || 'Page title unavailable'))),
-          h('div', { class: 'browser-col', text: site.browser || 'Browser' }),
-          h('div', { class: 'value', text: durationText(site.seconds) }),
-          h('div', { class: 'share', text: pctText(site.seconds, total) }))));
+    const rows = shown.map((site) => siteRow({
+      glyph: siteGlyph(site.domain),
+      name: site.domain,
+      detail: site.title ? `${shortName(site.browser || 'Browser')} · ${site.title}` : shortName(site.browser || 'Browser'),
+      seconds: site.seconds,
+      whole: total,
+    }));
+
+    if (restSeconds > 0.5) {
+      rows.push(siteRow({
+        glyph: glyph(null),
+        name: 'Other sites',
+        detail: `${plural(rest.length, 'site', 'sites')} below this list`,
+        seconds: restSeconds,
+        whole: total,
+        other: true,
+      }));
+    }
+    if (unattributed > 0.5) {
+      rows.push(siteRow({
+        glyph: glyph(null),
+        name: 'Browser time without a website name',
+        detail: snap.settings.recordWebsites ? 'No recent match in history' : 'Naming is turned off',
+        seconds: unattributed,
+        whole: total,
+        dashed: true,
+      }));
     }
 
-    return h('div', null,
-      titleRow({
-        title: 'Websites',
-        sub,
-        actions: [rangeControl('sites', days), titleActions(true)],
-      }),
-      h('div', { class: 'grid' },
-        h('section', { class: 'panel span-12', 'aria-labelledby': 'sites-table-heading' },
-          h('header', null,
-            h('h2', { id: 'sites-table-heading', text: 'Time by website' }),
-            h('span', { class: 'meta source', text: 'Read from local browser history' })),
-          content)));
+    const meta = total
+      ? h('div', { class: 'hours-meta' },
+        h('span', { class: 'num', text: `${durationText(total)} in browsers` }),
+        h('span', { class: 'faint num', text: unattributed > 0.5 ? `${durationText(unattributed)} without a site name` : 'Every browser minute named' }))
+      : h('div', { class: 'hours-meta' }, h('span', { class: 'faint', text: 'No browser time in this range.' }));
+
+    let empty = null;
+    if (!snap.settings.recordWebsites) {
+      empty = listEmpty(
+        ['Website names are turned off.', 'Tally still counts every browser as an app. Names come only from local browser history.'],
+        h('button', { class: 'link-btn', type: 'button', onclick: () => go('settings') }, 'Turn on website names'));
+    } else if (!total) {
+      empty = listEmpty(['No website time recorded in this range.', 'Website names come from the history file of the browser in front.']);
+    }
+
+    const body = h('section', { class: 'sites' },
+      h('div', { class: 'sites-head' },
+        h('div', { class: 'hours-title', text: 'Share of browser time' }),
+        meta),
+      rows.length ? rows : null,
+      empty ? h('div', { class: 'sites-empty' }, empty) : null,
+      rows.length ? h('div', { class: 'sites-note', text: 'Names come from each browser’s own history, matched against the window title. Tally copies the file, reads it here and deletes the copy. Nothing is uploaded.' }) : null,
+      browserSplit(data, total));
+
+    return h('div', { class: 'page-inner' }, header, body);
   }
 
-  function rangePhrase(data, days) {
-    if (days === 1) return '';
-    return `${data.daysWithData} of ${days} days recorded`;
+  function siteRow({ glyph: mark, name, detail, seconds, whole, other = false, dashed = false }) {
+    const part = share(seconds, whole);
+    return h('div', { class: `site${other ? ' other' : ''}${dashed ? ' unattributed' : ''}` },
+      h('div', { class: 'site-line' },
+        mark || null,
+        h('span', { class: 'site-name', text: name, title: name }),
+        h('span', { class: 'site-browser', text: detail, title: detail }),
+        h('span', { class: 'site-time num', text: durationText(seconds) }),
+        h('span', { class: 'site-pct num', text: part.text })),
+      h('div', { class: `track${dashed ? ' dashed' : ''}` }, dashed ? null : h('i', { style: `width:${part.width}%` })));
+  }
+
+  function browserSplit(data, total) {
+    const rows = (data.apps || []).filter((app) => app.browser && app.seconds > 0);
+    if (!rows.length || !total) return null;
+    const ordered = [...rows].sort((a, b) => b.seconds - a.seconds);
+    const top = ordered.slice(0, 4);
+    const restSeconds = totalOf(ordered.slice(4));
+    const pieces = top.map((app, index) => ({
+      name: shortName(app.browser),
+      seconds: app.seconds,
+      colour: STRIP_COLOURS[index % STRIP_COLOURS.length],
+    }));
+    if (restSeconds > 0.5) pieces.push({ name: 'Other', seconds: restSeconds, colour: '#e2e6eb' });
+
+    return h('div', { class: 'browser-split' },
+      h('div', { class: 'label', text: 'By browser' }),
+      h('div', { class: 'split-strip', 'aria-hidden': 'true' },
+        pieces.map((piece) => h('i', { style: `width:${share(piece.seconds, total).width}%;background:${piece.colour}` }))),
+      h('div', { class: 'split-legend' },
+        pieces.map((piece) => h('span', null,
+          h('b', { text: piece.name }),
+          h('span', { class: 'num', text: durationText(piece.seconds) })))));
   }
 
   /* ---------- settings ---------- */
@@ -575,146 +744,276 @@
   function renderSettings(snap) {
     const settings = snap.settings;
     const system = snap.system;
+    const tracking = snap.tracking;
+    const reason = reasonOf(tracking, settings);
     const saved = Date.now() - state.savedAt < 2600;
+    const platform = system.platform === 'win32'
+      ? `Windows${system.arch ? ` ${system.arch === 'x64' ? 'x64' : system.arch}` : ''}`
+      : (system.platform || 'Desktop');
 
-    const trackingPanel = settingPanel([
-      switchRow('Record screen time', 'Pause and resume without closing Tally.', !settings.paused, () => saveSettings({ paused: !settings.paused })),
-      selectRow('Sample every', 'A shorter interval is more precise; a longer one uses less power.',
-        [[5, '5 seconds'], [10, '10 seconds'], [30, '30 seconds']], settings.sampleSeconds,
-        (value) => saveSettings({ sampleSeconds: Number(value) })),
-      selectRow('Ignore idle time after', 'Nothing is counted after this long without keyboard or mouse input, unless media is playing in front.',
-        [[60, '1 minute'], [120, '2 minutes'], [300, '5 minutes'], [600, '10 minutes']], settings.idleSeconds,
-        (value) => saveSettings({ idleSeconds: Number(value) })),
-      switchRow('Open Tally at login', 'Start hidden in the tray when you sign in to Windows.', settings.launchAtLogin,
-        () => saveSettings({ launchAtLogin: !settings.launchAtLogin })),
-      snap.tracking.mediaAvailable === false
-        ? h('div', { class: 'note', text: 'Windows media sessions are not readable on this build, so idle time is measured from keyboard and mouse only.' })
-        : null,
-    ]);
+    const header = pageHead({
+      eyebrow: `Tally ${system.version} · ${platform}`,
+      title: 'Settings',
+      right: [saved
+        ? h('span', { class: 'stamp', text: 'Saved' })
+        : h('span', { class: 'stamp', text: 'Nothing leaves this PC' })],
+    });
+
+    const index = [
+      ['recording', 'Recording'],
+      ['websites', 'Websites'],
+      ['data', 'Data'],
+      ['about', 'About'],
+    ];
+
+    const indexRail = h('aside', { class: 'index', 'aria-label': 'Settings sections' },
+      index.map(([key, label], i) => h('button', {
+        type: 'button',
+        class: state.openGroup === key ? 'on' : null,
+        onclick: () => {
+          state.openGroup = key;
+          document.querySelectorAll('.index button').forEach((button) => {
+            button.classList.toggle('on', button.dataset.group === key);
+          });
+          const target = document.getElementById(`group-${key}`);
+          if (target) target.scrollIntoView({ block: 'start' });
+        },
+        dataset: { group: key },
+      },
+      h('span', { class: 'n num', text: `0${i + 1}` }),
+      h('span', { text: label }))));
 
     const browsers = system.browserList || [];
     const installed = browsers.filter((browser) => browser.installed);
     const enabled = settings.browsers === null ? installed.map((browser) => browser.id) : settings.browsers;
 
-    const websiteRows = [
-      switchRow('Name websites from browser history',
-        'Uses the browser’s own history file. No extension, no network.',
+    const recording = h('section', { class: 'group', id: 'group-recording' },
+      groupHead('01', 'Recording', tracking.mediaAvailable === false ? 'Keyboard and mouse only' : 'Media sessions readable'),
+      h('div', { class: 'readout' },
+        readoutCell('State', STATES[reason].label, 'state'),
+        readoutCell('Last sample', clockOf(tracking.lastSampleAt, true), 'num'),
+        readoutCell('Idle poll', tracking.idle ? '20 s' : `${tracking.sampling || settings.sampleSeconds} s`, 'num'),
+        readoutCell('Media sessions', tracking.mediaAvailable === false
+          ? 'Unavailable'
+          : tracking.mediaSessions == null ? 'Not read' : `${tracking.mediaSessions} detected`, 'num')),
+      switchRow('Record screen time', 'Pause any time from the sidebar; nothing is deleted.', !settings.paused,
+        () => saveSettings({ paused: !settings.paused })),
+      switchRow('Open Tally at login', 'Start hidden in the tray when you sign in to Windows.', settings.launchAtLogin,
+        () => saveSettings({ launchAtLogin: !settings.launchAtLogin })),
+      h('div', { class: 'fields' },
+        fieldSelect('Sample every',
+          [[5, '5 seconds'], [10, '10 seconds'], [30, '30 seconds']],
+          settings.sampleSeconds,
+          (value) => saveSettings({ sampleSeconds: Number(value) })),
+        fieldSelect('Ignore idle time after',
+          [[60, '1 minute'], [120, '2 minutes'], [300, '5 minutes'], [600, '10 minutes']],
+          settings.idleSeconds,
+          (value) => saveSettings({ idleSeconds: Number(value) })),
+        fieldSelect('Stop counting media after',
+          [[30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours'], ['never', 'Never']],
+          settings.mediaCeilingMinutes == null ? 'never' : settings.mediaCeilingMinutes,
+          (value) => saveSettings({ mediaCeilingMinutes: value === 'never' ? null : Number(value) }))),
+      h('p', { class: 'field-hint', text: 'Media keeps the clock running without input until this limit, then waits for a keystroke. Never means it keeps counting until the player stops.' }),
+      tracking.mediaAvailable === false
+        ? h('p', { class: 'field-hint', text: 'Windows media sessions are not readable on this build, so idle time is measured from keyboard and mouse only.' })
+        : null);
+
+    const websites = h('section', { class: 'group', id: 'group-websites' },
+      groupHead('02', 'Websites', `${plural(installed.length, 'browser', 'browsers')} found`),
+      switchRow('Record website names', 'Copies each browser’s history to a temporary folder, matches the window title, then deletes the copy.',
         settings.recordWebsites, () => saveSettings({ recordWebsites: !settings.recordWebsites })),
-      h('div', { class: 'browser-list' },
-        installed.length
-          ? installed.map((browser) => h('label', { class: 'browser-row' },
-            browserGlyph(browser.id),
-            h('span', { class: 'browser-name', text: browser.name }),
-            h('span', { class: 'browser-meta', text: plural(browser.profiles, 'profile', 'profiles') }),
-            h('input', {
-              class: 'check', type: 'checkbox', checked: enabled.includes(browser.id),
-              onchange: (event) => {
-                const next = new Set(enabled);
-                if (event.target.checked) next.add(browser.id);
-                else next.delete(browser.id);
-                const all = installed.every((row) => next.has(row.id)) ? null : [...next];
-                saveSettings({ browsers: all });
-              },
-            })))
-          : h('div', { class: 'note', text: 'No supported browser found on this PC yet.' })),
-      h('p', { class: 'note', text: 'Tally copies the history file to a temporary folder, reads recent visits, then deletes the copy. The copy never leaves this device.' }),
-      h('div', { class: 'note' },
+      installed.length
+        ? h('div', { class: 'browsers' }, installed.map((browser) => h('label', { class: 'browser' },
+          h('input', {
+            class: 'check-input',
+            type: 'checkbox',
+            checked: enabled.includes(browser.id),
+            onchange: (event) => {
+              const next = new Set(enabled);
+              if (event.target.checked) next.add(browser.id);
+              else next.delete(browser.id);
+              const all = installed.every((row) => next.has(row.id)) ? null : [...next];
+              saveSettings({ browsers: all });
+            },
+          }),
+          h('span', { class: 'check', html: CHECK }),
+          browserGlyph(browser.id),
+          h('span', { class: 'bn', text: browser.name }))))
+        : h('p', { class: 'note', text: 'No supported browser found on this PC yet.' }),
+      h('p', { class: 'note' },
+        'The copy never leaves this device. ',
         h('button', {
-          class: 'btn btn-secondary', type: 'button',
+          class: 'link-btn',
+          type: 'button',
           onclick: async () => {
             const list = await api.rescanBrowsers();
             state.snapshot.system.browserList = list;
             render();
           },
-        }, 'Rescan browsers')),
-    ];
+        }, 'Rescan browsers')));
 
     const oldest = system.oldestDay;
-    const dataPanel = settingPanel([
-      selectRow('Keep history for', 'Older days are deleted automatically.',
-        [[30, '30 days'], [90, '90 days'], [365, '1 year']], settings.retentionDays,
-        (value) => saveSettings({ retentionDays: Number(value) })),
-      h('div', { class: 'data-stats' },
-        stat('Days stored', String(system.storedDays || 0)),
-        stat('Oldest day', oldest ? shortDayLabel(oldest) : '—'),
-        stat('Data size', formatBytes(system.fileSize || 0))),
-      h('div', { class: 'field-row' },
-        h('div', { class: 'text' }, h('div', { class: 'title', text: 'Data file' })),
-        h('div', { class: 'control storage-field' },
-          h('input', { readonly: true, value: system.dataPath, 'aria-label': 'Data file location' }),
-          h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => api.openDataFolder() }, 'Show'))),
-      h('div', { class: 'destructive-row' },
-        h('div', { class: 'text' },
-          h('div', { class: 'title', text: 'Delete all recorded time' }),
-          h('div', { class: 'desc', text: 'Removes every app and website total on this PC.' })),
+    const dataGroup = h('section', { class: 'group', id: 'group-data' },
+      groupHead('03', 'Data', `${formatBytes(system.fileSize || 0)} on disk`),
+      h('div', { class: 'row' },
+        h('div', null,
+          h('div', { class: 'row-t', text: 'Keep history for' }),
+          h('div', { class: 'row-d', text: 'Older days are deleted automatically.' })),
+        h('div', { class: 'row-r' },
+          h('select', {
+            class: 'select',
+            'aria-label': 'Keep history for',
+            onchange: (event) => saveSettings({ retentionDays: Number(event.target.value) }),
+          },
+          [[30, '30 days'], [90, '90 days'], [365, '1 year']].map(([value, label]) => h('option', {
+            value,
+            selected: Number(settings.retentionDays) === value,
+          }, label))))),
+      h('div', { class: 'stats' },
+        h('div', null, h('div', { class: 'k', text: 'Days stored' }), h('div', { class: 'v num', text: String(system.storedDays || 0) })),
+        h('div', null, h('div', { class: 'k', text: 'Oldest day' }), h('div', { class: 'v num', text: oldest ? shortDayLabel(oldest) : '—' })),
+        h('div', { class: 'path-stat' },
+          h('div', { class: 'k', text: 'File' }),
+          h('div', { class: 'v num path', text: system.dataPath, title: system.dataPath }))),
+      h('div', { class: 'row destructive' },
+        h('div', null,
+          h('div', { class: 'row-t danger', text: 'Delete all data' }),
+          h('div', { class: 'row-d', text: 'Removes every day, then starts empty. It cannot be undone.' })),
+        h('div', { class: 'row-r' },
+          h('button', { class: 'btn btn-danger', type: 'button', onclick: () => dialog.showModal() }, 'Delete data…'))));
+
+    const about = h('section', { class: 'group', id: 'group-about' },
+      groupHead('04', 'About', `Tally ${system.version}`),
+      h('p', { class: 'about', text: 'One local JSON file. No account, no extension, no upload, no network requests. Tally reads the title of the window in front every few seconds and writes the total here.' }),
+      h('p', { class: 'about faint', text: `${platform} · ${system.dataPath}` }));
+
+    const panel = h('section', { class: 'panel' },
+      recording,
+      websites,
+      dataGroup,
+      about,
+      h('div', { class: 'panel-foot' },
+        h('span', { text: `Tally ${system.version}` }),
+        h('span', { class: 'num', text: platform }),
+        h('span', { text: 'No network requests' }),
         h('button', {
-          class: 'btn btn-danger', type: 'button',
-          onclick: () => dialog.showModal(),
-        }, 'Delete data')),
-    ]);
+          class: 'link-btn',
+          type: 'button',
+          onclick: () => api.openDataFolder(),
+        }, 'Show data folder', h('span', { class: 'ext', html: EXTERNAL }))));
 
-    const aboutPanel = h('div', { class: 'setting-panel' },
-      h('div', { class: 'about-well' },
-        h('p', null, h('strong', { text: `Tally ${system.version}` }), ` for ${system.platform === 'win32' ? 'Windows' : system.platform}.`),
-        h('p', null, 'One local JSON file. No account, no extension, no upload, no network requests.') ));
+    return h('div', { class: 'page-inner' },
+      header,
+      h('div', { class: 'settings' }, indexRail, panel));
+  }
 
+  function groupHead(number, title, meta) {
+    return h('div', { class: 'group-head' },
+      h('span', { class: 'group-n num', text: number }),
+      h('span', { class: 'group-t', text: title }),
+      meta ? h('span', { class: 'group-m', text: meta }) : null);
+  }
+
+  function readoutCell(label, value, className) {
     return h('div', null,
-      titleRow({
-        title: 'Settings',
-        sub: 'Tracking, website names and where the data lives.',
-        actions: saved ? [h('span', { class: 'stamp', text: 'Saved' })] : null,
-      }),
-      h('div', { class: 'settings' },
-        settingRow('Tracking', 'Tally reads the title and process of the foreground window every few seconds.', trackingPanel),
-        settingRow('Websites', 'Site names come from the browser’s own history, read on this PC.', websiteRows),
-        settingRow('Data', 'One local file, kept for the retention you choose.', dataPanel),
-        settingRow('About', 'Small, local and quiet.', aboutPanel)));
-  }
-
-  function settingRow(title, description, panel) {
-    return h('section', { class: 'setting-row' },
-      h('div', { class: 'setting-label' },
-        h('h2', null, title),
-        h('p', { text: description })),
-      h('div', { class: 'setting-panel' }, panel));
-  }
-
-  function settingPanel(children) {
-    return h('div', { class: 'setting-panel' }, children.flat());
+      h('span', { class: 'k', text: label }),
+      h('span', { class: `v${className === 'num' ? ' num' : ''}${className === 'state' ? ' state' : ''}`, text: value }));
   }
 
   function switchRow(title, description, checked, onChange) {
-    return h('div', { class: 'switch-row' },
-      h('div', { class: 'text' },
-        h('div', { class: 'title', text: title }),
-        h('div', { class: 'desc', text: description })),
-      h('button', {
-        class: 'switch', type: 'button', role: 'switch', 'aria-checked': String(Boolean(checked)), 'aria-label': title,
-        onclick: onChange,
-      }, h('span', { class: 'knob' })));
+    return h('div', { class: 'row' },
+      h('div', null,
+        h('div', { class: 'row-t', text: title }),
+        h('div', { class: 'row-d', text: description })),
+      h('div', { class: 'row-r' },
+        h('button', {
+          class: 'switch',
+          type: 'button',
+          role: 'switch',
+          'aria-checked': String(Boolean(checked)),
+          'aria-label': title,
+          onclick: onChange,
+        })));
   }
 
-  function selectRow(title, description, options, value, onChange) {
-    const id = `select-${title.toLowerCase().replace(/[^a-z]+/g, '-')}`;
-    return h('div', { class: 'field-row' },
-      h('div', { class: 'text' },
-        h('label', { class: 'title', for: id, text: title }),
-        h('div', { class: 'desc', text: description })),
-      h('div', { class: 'control' },
-        h('select', { class: 'control', id, onchange: (event) => onChange(event.target.value) },
-          options.map(([optionValue, label]) => h('option', { value: optionValue, selected: Number(optionValue) === Number(value) }, label)))));
+  function fieldSelect(label, options, value, onChange) {
+    return h('label', { class: 'field' },
+      h('span', { class: 'k', text: label }),
+      h('select', {
+        class: 'select',
+        onchange: (event) => onChange(event.target.value),
+      },
+      options.map(([optionValue, optionLabel]) => h('option', {
+        value: optionValue,
+        selected: String(optionValue) === String(value),
+      }, optionLabel))));
   }
 
-  function stat(label, value) {
-    return h('div', { class: 'stat' },
-      h('div', { class: 'stat-label', text: label }),
-      h('div', { class: 'stat-value', text: value }));
+  /* ---------- tracker state ---------- */
+
+  const STATES = {
+    recording: { label: 'Recording', dot: true, why: 'Time is being added.' },
+    media: { label: 'Media in foreground', dot: true, why: 'Time continues with no input.' },
+    idle: { label: 'Idle', dot: false, why: 'No time added. Counting starts again on input.' },
+    limit: { label: 'Media limit reached', dot: false, why: 'Media kept playing without input. Counting resumes when you touch the keyboard.' },
+    paused: { label: 'Paused', dot: false, why: 'Nothing is being recorded. Resume when you want totals again.' },
+    self: { label: 'Last counted · —', dot: false, why: 'Tally is in front now, and is never counted.' },
+    starting: { label: 'Starting', dot: false, why: 'Reading the app in front.' },
+    unsupported: { label: 'Tracking unavailable', dot: false, why: 'Screen-time tracking currently runs on Windows.' },
+    error: { label: 'Not recording', dot: false, why: 'The last read did not work.' },
+  };
+
+  function reasonOf(tracking, settings) {
+    if (!tracking.supported) return 'unsupported';
+    if (settings.paused) return 'paused';
+    if (tracking.error) return 'error';
+    return tracking.reason || (tracking.idle ? 'idle' : tracking.media ? 'media' : 'recording');
   }
 
-  function formatBytes(bytes) {
-    if (!bytes) return '0 KB';
-    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  function stateCopy(snap) {
+    const tracking = snap.tracking;
+    const reason = reasonOf(tracking, snap.settings);
+    const base = STATES[reason] || STATES.starting;
+    const why = reason === 'recording' && state.route === 'sites' && snap.settings.recordWebsites
+      ? 'Titles are read here on this PC.'
+      : reason === 'recording' && tracking.app
+        ? `${shortName(tracking.app)} is in front. Time is being added.`
+        : reason === 'media' && tracking.app
+          ? `${shortName(tracking.app)} is playing media. Time continues with no input.`
+          : reason === 'limit'
+            ? `${snap.settings.mediaCeilingMinutes == null ? 'The media limit is reached.' : `Media played for ${mediaCeilingLabel(snap.settings.mediaCeilingMinutes)} without input.`} Counting resumes when you touch the keyboard.`
+            : reason === 'error' && tracking.error
+              ? tracking.error
+              : base.why;
+    const label = reason === 'self'
+      ? `Last counted · ${tracking.app ? shortName(tracking.app) : 'nothing yet'}`
+      : base.label;
+    return { reason, label, why, dot: base.dot };
+  }
+
+  function renderRailState() {
+    const host = document.getElementById('rail-state');
+    const snap = state.snapshot;
+    if (!host || !snap) return;
+    const copy = stateCopy(snap);
+    const paused = snap.settings.paused;
+    const canPause = snap.tracking.supported;
+
+    host.replaceChildren(h('div', { class: 'state' },
+      h('div', { class: 'state-head' },
+        h('span', { class: `dot${copy.dot ? '' : ' hollow'}` }),
+        h('span', { class: 'state-label', text: copy.label, title: copy.label })),
+      h('p', { class: 'state-why', text: copy.why }),
+      canPause
+        ? h('button', {
+          class: 'state-action',
+          type: 'button',
+          onclick: () => saveSettings({ paused: !paused }),
+        }, paused ? 'Resume recording' : 'Pause recording')
+        : null));
+
+    const note = document.getElementById('preview-note');
+    if (note) note.hidden = !snap.tracking.demo;
   }
 
   /* ---------- render ---------- */
@@ -731,7 +1030,7 @@
           : renderToday(snap);
     view.replaceChildren(page);
     renderNav();
-    renderSidebarState();
+    renderRailState();
   }
 
   function renderNav() {
@@ -741,36 +1040,15 @@
     });
   }
 
-  function renderSidebarState() {
-    const host = document.getElementById('track-state');
-    const snap = state.snapshot;
-    if (!host || !snap) return;
-    const tracking = snap.tracking;
-    const paused = snap.settings.paused;
-    const text = !tracking.supported ? 'Tracking unavailable'
-      : paused ? 'Paused'
-        : tracking.idle ? 'Idle'
-          : tracking.lastSampleAt ? `Tracking · ${shortName(tracking.app || 'waiting')}` : 'Starting';
-    host.replaceChildren(
-      h('span', { class: 'dot' }),
-      h('span', { class: 'state-text', text, title: text }),
-      tracking.supported
-        ? h('button', { type: 'button', onclick: () => saveSettings({ paused: !paused }) }, paused ? 'Resume' : 'Pause')
-        : null);
-    host.classList.toggle('is-paused', paused || !tracking.supported);
-    host.classList.toggle('is-idle', !paused && tracking.supported && Boolean(tracking.idle));
-    const note = document.getElementById('preview-note');
-    if (note) note.hidden = !tracking.demo;
-  }
-
   /* ---------- actions ---------- */
 
   async function refresh() {
     try {
       const active = document.activeElement;
-      const editing = state.route === 'settings' && active && view.contains(active) && /^(SELECT|INPUT|BUTTON)$/.test(active.tagName);
+      const editing = state.route === 'settings' && active && view.contains(active) && /^(SELECT|INPUT)$/.test(active.tagName);
       state.snapshot = await api.snapshot();
       if (!editing) render();
+      else renderRailState();
     } catch {
       // keep the last good screen rather than flashing an error over it
     }
@@ -787,7 +1065,7 @@
       render();
       api.snapshot().then((snapshot) => {
         state.snapshot = snapshot;
-        if (state.route !== 'settings') render();
+        render();
       }).catch(() => {});
       setTimeout(() => {
         if (state.route === 'settings') render();
@@ -803,48 +1081,19 @@
       state.route = route;
       render();
     }
-    closeMenu();
   }
 
-  /* ---------- routing and menu ---------- */
+  /* ---------- routing ---------- */
 
   function readRoute() {
     const hash = window.location.hash.replace(/^#\/?/, '');
     return ['today', 'apps', 'sites', 'settings'].includes(hash) ? hash : 'today';
   }
 
-  function closeMenu() {
-    state.menuOpen = false;
-    sidebar.classList.remove('is-open');
-    scrim.hidden = true;
-    menuBtn.setAttribute('aria-expanded', 'false');
-    document.body.classList.remove('is-menu-open');
-  }
-
-  function toggleMenu() {
-    state.menuOpen = !state.menuOpen;
-    sidebar.classList.toggle('is-open', state.menuOpen);
-    scrim.hidden = !state.menuOpen;
-    menuBtn.setAttribute('aria-expanded', String(state.menuOpen));
-    document.body.classList.toggle('is-menu-open', state.menuOpen);
-    if (state.menuOpen) {
-      const current = sidebar.querySelector('.nav-item[aria-current="page"]') || sidebar.querySelector('.nav-item');
-      if (current) current.focus({ preventScroll: true });
-    }
-  }
-
   window.addEventListener('hashchange', () => {
     state.route = readRoute();
-    closeMenu();
     render();
-    window.scrollTo({ top: 0 });
-  });
-
-  menuBtn.addEventListener('click', toggleMenu);
-  sheetClose.addEventListener('click', closeMenu);
-  scrim.addEventListener('click', closeMenu);
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && state.menuOpen) closeMenu();
+    view.scrollTo({ top: 0 });
   });
 
   dialog.addEventListener('close', async () => {
@@ -870,8 +1119,8 @@
   function createDemoApi() {
     const days = window.TallyDemo ? window.TallyDemo.buildDays(30) : { days: {} };
     const settings = {
-      sampleSeconds: 5, idleSeconds: 120, paused: false, recordWebsites: true,
-      launchAtLogin: false, retentionDays: 90, browsers: null,
+      sampleSeconds: 5, idleSeconds: 120, mediaCeilingMinutes: 120, paused: false,
+      recordWebsites: true, launchAtLogin: false, retentionDays: 90, browsers: null,
     };
     const browserList = [
       { id: 'chrome', name: 'Google Chrome', profiles: 1, installed: true },
@@ -900,10 +1149,13 @@
         settings,
         tracking: {
           supported: true, lastSampleAt: Date.now(), app: 'Google Chrome', site: 'youtube.com',
-          title: 'How a mechanical watch works - YouTube', idleMs: 0, error: null, paused: settings.paused, sampling: 5, demo: true,
+          title: 'How a mechanical watch works - YouTube', idleMs: 0, idle: false,
+          media: true, mediaSessions: 2, mediaAvailable: true,
+          reason: 'media', error: null, paused: settings.paused, sampling: 5, demo: true,
         },
         system: {
-          platform: 'win32', version: '1.0.0', dataPath: 'C:\\Users\\you\\AppData\\Roaming\\Tally\\tally-data.json',
+          platform: 'win32', arch: 'x64', version: '1.2.0',
+          dataPath: 'C:\\Users\\you\\AppData\\Roaming\\Tally\\tally-data.json',
           browserList, supported: true, startedAt: new Date(Date.now() - 30 * 86400000).toISOString(),
           storedDays: keys.length, oldestDay: keys[0] || null, fileSize: JSON.stringify(days).length,
         },
