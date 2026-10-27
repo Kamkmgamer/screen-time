@@ -1,7 +1,7 @@
 {
   "name": "tally-screen-time",
   "productName": "Tally",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Local screen-time tracker: which app and which website took your day.",
   "author": "Screen",
   "main": "electron/main.js",
@@ -38,6 +38,7 @@
     "files": [
       "electron/**/*",
       "app/**/*",
+      "build/*.png",
       "native/media/build/Release/*.node",
       "package.json"
     ],
