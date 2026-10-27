@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; script-src 'self'; connect-src 'none'">
+  <title>Tally - Screen time</title>
+  <link rel="preload" href="fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="app">
+    <div class="scrim" id="scrim" hidden></div>
+
+    <aside class="sidebar" id="sidebar" aria-label="Tally">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <path d="M8.6 6.5v19M13.4 6.5v19M18.2 6.5v19M23 6.5v19M6.2 23.2 25.4 9.2"/>
+          </svg>
+        </span>
+        <span class="brand-text">
+          <span class="brand-name">Tally</span>
+          <span class="brand-scope">This PC · local only</span>
+        </span>
+        <button class="icon-btn sheet-close" id="sheet-close" aria-label="Close menu">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+
+      <nav class="nav" aria-label="Screens">
+        <a class="nav-item" href="#/today" data-nav="today">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M8 4.9V8l2.1 1.3"/></svg>
+          <span>Today</span>
+        </a>
+        <a class="nav-item" href="#/apps" data-nav="apps">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="2.2" width="4.6" height="4.6" rx="1.2"/><rect x="9.2" y="2.2" width="4.6" height="4.6" rx="1.2"/><rect x="2.2" y="9.2" width="4.6" height="4.6" rx="1.2"/><rect x="9.2" y="9.2" width="4.6" height="4.6" rx="1.2"/></svg>
+          <span>Apps</span>
+        </a>
+        <a class="nav-item" href="#/sites" data-nav="sites">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.6"/><path d="M2.6 8h10.8M8 2.4c1.5 1.5 2.2 3.4 2.2 5.6S9.5 12.1 8 13.6C6.5 12.1 5.8 10.2 5.8 8S6.5 3.9 8 2.4Z"/></svg>
+          <span>Websites</span>
+        </a>
+        <div class="nav-group">System</div>
+        <a class="nav-item" href="#/settings" data-nav="settings">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h5M10.8 5h2.7M2.5 11h2.7M8.5 11h5"/><circle cx="9.2" cy="5" r="1.5"/><circle cx="6.9" cy="11" r="1.5"/></svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="track-state" id="track-state"></div>
+        <div class="preview-note" id="preview-note" hidden>Sample data for preview</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="mobile-bar">
+        <div class="brand brand-compact">
+          <span class="mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M8.6 6.5v19M13.4 6.5v19M18.2 6.5v19M23 6.5v19M6.2 23.2 25.4 9.2"/>
+            </svg>
+          </span>
+          <span class="brand-name">Tally</span>
+        </div>
+        <button class="icon-btn" id="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg>
+        </button>
+      </header>
+
+      <main class="canvas" id="view" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <dialog class="dialog" id="confirm-dialog">
+    <form method="dialog">
+      <h2>Delete all recorded time?</h2>
+      <p>Every app and website total Tally has stored on this PC will be removed. This cannot be undone.</p>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" value="cancel">Keep data</button>
+        <button class="btn btn-danger" value="delete">Delete data</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="demo-data.js"></script>
+  <script src="charts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

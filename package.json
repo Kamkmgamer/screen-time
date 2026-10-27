@@ -1,0 +1,25 @@
+{
+  "name": "tally-screen-time",
+  "productName": "Tally",
+  "version": "1.0.0",
+  "description": "Local screen-time tracker: which app and which website took your day.",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "make-icons": "node scripts/make-icons.js",
+    "check": "node scripts/koffi-test.js"
+  },
+  "dependencies": {
+    "koffi": "^2.14.1",
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "electron": "^40.0.0"
+  },
+  "allowScripts": {
+    "electron@40.10.6": true,
+    "koffi@2.16.3": true
+  }
+}

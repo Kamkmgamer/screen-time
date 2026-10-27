@@ -1,0 +1,277 @@
+'use strict';
+
+const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs');
+
+const { Store } = require('./tracker/store');
+const { Tracker } = require('./tracker');
+const browsers = require('./tracker/browsers');
+
+const ROOT = path.join(__dirname, '..');
+const DEMO = process.env.TALLY_DEMO === '1' || process.argv.includes('--demo');
+const SCREENSHOT = process.env.TALLY_SCREENSHOT || null;
+let win = null;
+let tray = null;
+let store = null;
+let tracker = null;
+let changeTimer = null;
+let rebuildTrayMenu = null;
+
+function send(channel, payload) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+function broadcast() {
+  if (changeTimer) return;
+  changeTimer = setTimeout(() => {
+    changeTimer = null;
+    send('tally:changed', { at: Date.now() });
+  }, 4000);
+  if (changeTimer.unref) changeTimer.unref();
+}
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Demo mode stands in a browser list so the sample week matches the machine it describes.
+function demoBrowserList() {
+  const list = browsers.browserAvailability();
+  return list.map((browser) => ({
+    ...browser,
+    profiles: browser.id === 'chrome' || browser.id === 'edge' ? 1 : 0,
+    installed: browser.id === 'chrome' || browser.id === 'edge',
+  }));
+}
+
+function snapshot() {
+  const today = store.aggregate(1);
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = store.aggregate(1, yesterdayDate);
+  const week = store.aggregate(7);
+  const month = store.aggregate(30);
+  const storedKeys = Object.keys(store.data.days).sort();
+  let fileSize = 0;
+  try { fileSize = fs.statSync(store.file).size; } catch { fileSize = 0; }
+  if (DEMO) fileSize = Buffer.byteLength(JSON.stringify(store.data.days));
+  return {
+    now: new Date().toISOString(),
+    todayKey: todayKey(),
+    today,
+    yesterday,
+    ranges: { 1: today, 7: week, 30: month },
+    settings: store.settings,
+    tracking: {
+      ...tracker.getStatus(),
+      paused: store.settings.paused,
+      sampling: store.settings.sampleSeconds,
+      demo: DEMO,
+    },
+    system: {
+      platform: process.platform,
+      version: app.getVersion(),
+      dataPath: store.file,
+      browserList: DEMO ? demoBrowserList() : browsers.browserAvailability(),
+      supported: process.platform === 'win32',
+      startedAt: store.data.createdAt,
+      storedDays: storedKeys.length,
+      oldestDay: storedKeys[0] || null,
+      fileSize,
+    },
+  };
+}
+
+function createWindow() {
+  const shotWidth = SCREENSHOT ? Number(process.env.TALLY_WIDTH) || 0 : 0;
+  const shotHeight = SCREENSHOT ? Number(process.env.TALLY_HEIGHT) || 0 : 0;
+  win = new BrowserWindow({
+    width: shotWidth || 1240,
+    height: shotHeight || 860,
+    minWidth: shotWidth ? 240 : 880,
+    minHeight: shotHeight ? 320 : 640,
+    show: false,
+    backgroundColor: '#f2f4f7',
+    icon: path.join(ROOT, 'build', 'icon.png'),
+    title: 'Tally',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+    },
+  });
+
+  win.loadFile(path.join(ROOT, 'app', 'index.html'),
+    SCREENSHOT && process.env.TALLY_ROUTE ? { hash: `/${process.env.TALLY_ROUTE}` } : undefined);
+  win.once('ready-to-show', () => {
+    if (!process.argv.includes('--hidden') && !SCREENSHOT) win.show();
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.on('close', (event) => {
+    if (app.isQuitting || SCREENSHOT) return;
+    event.preventDefault();
+    win.hide();
+  });
+  win.on('closed', () => { win = null; });
+
+  if (SCREENSHOT) {
+    win.webContents.once('did-finish-load', () => {
+      setTimeout(async () => {
+        try {
+          if (process.env.TALLY_MENU === '1') {
+            await win.webContents.executeJavaScript("document.getElementById('menu-btn').click()");
+            await new Promise((resolve) => setTimeout(resolve, 320));
+          }
+          if (process.env.TALLY_SCROLL === '1') {
+            win.show();
+            await win.webContents.executeJavaScript('window.scrollTo(0, document.body.scrollHeight)');
+            await new Promise((resolve) => setTimeout(resolve, 320));
+          }
+          if (process.env.TALLY_DIALOG === '1') {
+            win.show();
+            await win.webContents.executeJavaScript("document.getElementById('confirm-dialog').showModal()");
+            await new Promise((resolve) => setTimeout(resolve, 320));
+          }
+          const image = await win.webContents.capturePage();
+          fs.writeFileSync(SCREENSHOT, image.toPNG());
+          console.log('[tally] screenshot written to', SCREENSHOT);
+        } catch (error) {
+          console.error('[tally] screenshot failed', error);
+        }
+        app.isQuitting = true;
+        app.quit();
+      }, 2200);
+    });
+  }
+}
+
+function createTray() {
+  const icon = nativeImage.createFromPath(path.join(ROOT, 'build', 'tray-32.png'));
+  tray = new Tray(icon);
+  tray.setToolTip('Tally - screen time');
+  const rebuild = () => {
+    const paused = store.settings.paused;
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Open Tally', click: () => { if (win) { win.show(); win.focus(); } } },
+      {
+        label: paused ? 'Resume tracking' : 'Pause tracking',
+        click: () => {
+          const settings = store.updateSettings({ paused: !paused });
+          if (settings) rebuild();
+          send('tally:changed', { at: Date.now() });
+        },
+      },
+      { type: 'separator' },
+      { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
+    ]));
+  };
+  rebuild();
+  rebuildTrayMenu = rebuild;
+  tray.on('click', () => { if (win) { win.show(); win.focus(); } });
+  tray.on('double-click', () => { if (win) { win.show(); win.focus(); } });
+}
+
+function applyLoginItem(settings) {
+  if (process.platform !== 'win32') return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: Boolean(settings.launchAtLogin),
+      path: process.execPath,
+      // In dev, Electron needs the app folder as its first argument; a packaged Tally does not.
+      args: app.isPackaged ? ['--hidden'] : [ROOT, '--hidden'],
+    });
+  } catch (error) {
+    console.error('[tally] could not set login item:', error.message);
+  }
+}
+
+function registerIpc() {
+  ipcMain.handle('tally:snapshot', () => snapshot());
+  ipcMain.handle('tally:range', (_event, days) => {
+    const count = [1, 7, 30].includes(Number(days)) ? Number(days) : 1;
+    return store.aggregate(count);
+  });
+  ipcMain.handle('tally:settings:update', (_event, patch) => {
+    const before = { ...store.settings };
+    const settings = store.updateSettings(patch && typeof patch === 'object' ? patch : {});
+    if (settings.launchAtLogin !== before.launchAtLogin) applyLoginItem(settings);
+    if (settings.sampleSeconds !== before.sampleSeconds) tracker.restart();
+    if (settings.paused !== before.paused) {
+      send('tally:changed', { at: Date.now() });
+      if (rebuildTrayMenu) rebuildTrayMenu();
+      if (tray) tray.setToolTip(settings.paused ? 'Tally - tracking paused' : 'Tally - screen time');
+    }
+    return { settings, tracking: tracker.getStatus() };
+  });
+  ipcMain.handle('tally:clear', () => {
+    store.clear();
+    store.flush();
+    send('tally:changed', { at: Date.now() });
+    return true;
+  });
+  ipcMain.handle('tally:open-data-folder', () => {
+    shell.showItemInFolder(store.file);
+    return true;
+  });
+  ipcMain.handle('tally:browsers:rescan', () => {
+    browsers.discoverProfiles(true);
+    return browsers.browserAvailability();
+  });
+}
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (win) { win.show(); win.focus(); }
+  });
+
+  app.whenReady().then(() => {
+    app.setAppUserModelId('com.tally.screentime');
+    Menu.setApplicationMenu(null);
+
+    store = new Store(path.join(app.getPath('userData'), 'tally-data.json')).load();
+    if (DEMO) {
+      const demo = require('../app/demo-data.js');
+      store.loadDemo(demo.buildDays(30));
+    }
+
+    tracker = new Tracker({ store });
+    tracker.on('change', broadcast);
+    if (!DEMO && !SCREENSHOT) tracker.start();
+    else if (DEMO) {
+      tracker.status.lastSampleAt = Date.now();
+      tracker.status.app = 'Google Chrome';
+      tracker.status.site = 'youtube.com';
+      tracker.status.title = 'How a mechanical watch works - YouTube';
+    }
+
+    applyLoginItem(store.settings);
+    registerIpc();
+    createWindow();
+    createTray();
+
+    app.on('activate', () => {
+      if (!win) createWindow();
+      else win.show();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    // keep tracking from the tray until Quit is chosen
+  });
+
+  app.on('before-quit', () => {
+    app.isQuitting = true;
+    if (tracker) tracker.stop();
+    if (store) store.flush();
+  });
+}
