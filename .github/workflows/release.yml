@@ -129,8 +129,16 @@ jobs:
       - name: Run the tracker tests
         run: npm test
 
+      # A TextEdit document gives the reader a focused window, so the
+      # Accessibility title read is exercised, not just the frontmost app.
       - name: Smoke-check the foreground reader
-        run: npm run check -- --expect
+        shell: bash
+        run: |
+          osascript -e 'tell application "TextEdit" to activate' -e 'tell application "TextEdit" to make new document'
+          sleep 3
+          out=$(npm run check -- --expect textedit) || { echo "$out"; exit 1; }
+          echo "$out"
+          echo "$out" | grep -E '^title +[^( ]'
 
       - name: Stamp the version
         shell: bash
@@ -171,7 +179,9 @@ jobs:
           cache: npm
 
       - name: Install X11 tools
-        run: sudo apt-get update && sudo apt-get install -y xvfb xterm x11-utils xdotool
+        # xfonts-base carries xterm's compiled-in font; without it xterm exits
+        # at launch and the smoke check has no window to read.
+        run: sudo apt-get update && sudo apt-get install -y xvfb xterm x11-utils xdotool xfonts-base
 
       - name: Install dependencies
         run: npm ci
