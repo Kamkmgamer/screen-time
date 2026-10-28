@@ -886,7 +886,7 @@
     const about = h('section', { class: 'group slab', id: 'group-about' },
       groupHead('About'),
       h('p', { class: 'about', text: update.supported
-        ? 'Tally keeps one JSON file on this PC. No account and no upload. Its only network request checks GitHub for a new version, and only while updates are on.'
+        ? 'Tally keeps one JSON file on this PC. No account and no upload. Its only network traffic is for updates: checking GitHub for a new version and downloading it, and only while updates are on.'
         : 'Tally keeps one JSON file on this PC. No account, no upload, no network requests.' }),
       update.supported
         ? [
