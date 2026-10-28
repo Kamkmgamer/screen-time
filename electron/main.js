@@ -139,7 +139,7 @@ function createWindow() {
   win.loadFile(path.join(ROOT, 'app', 'index.html'),
     SCREENSHOT && process.env.TALLY_ROUTE ? { hash: `/${process.env.TALLY_ROUTE}` } : undefined);
   win.once('ready-to-show', () => {
-    if (!process.argv.includes('--hidden') && !SCREENSHOT) win.show();
+    if (!process.argv.includes('--hidden') && !SCREENSHOT && !openedAtLogin()) win.show();
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
@@ -211,6 +211,23 @@ function createTray() {
   tray.on('double-click', () => { if (win) { win.show(); win.focus(); } });
 }
 
+// macOS login items take no arguments, so a login launch can't carry
+// --hidden; the login-item record says whether this launch was one.
+function openedAtLogin() {
+  try {
+    const settings = app.getLoginItemSettings();
+    return Boolean(settings && (settings.wasOpenedAtLogin || settings.wasOpenedAsHidden));
+  } catch {
+    return false;
+  }
+}
+
+// A quoted Exec argument escapes ", `, $ and \ with a backslash, and a
+// literal % is written %% (a bare % starts a field code).
+function execArg(value) {
+  return `"${String(value).replace(/[\\"`$]/g, '\\$&').replace(/%/g, '%%')}"`;
+}
+
 function applyLoginItem(settings) {
   try {
     if (process.platform === 'win32') {
@@ -230,9 +247,9 @@ function applyLoginItem(settings) {
         return;
       }
       const exe = process.env.APPIMAGE || process.execPath;
-      const args = app.isPackaged ? '--hidden' : `"${ROOT}" --hidden`;
+      const args = app.isPackaged ? '--hidden' : `${execArg(ROOT)} --hidden`;
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, `[Desktop Entry]\nType=Application\nName=Tally\nExec="${exe}" ${args}\nX-GNOME-Autostart-enabled=true\n`);
+      fs.writeFileSync(file, `[Desktop Entry]\nType=Application\nName=Tally\nExec=${execArg(exe)} ${args}\nX-GNOME-Autostart-enabled=true\n`);
     }
   } catch (error) {
     console.error('[tally] could not set login item:', error.message);

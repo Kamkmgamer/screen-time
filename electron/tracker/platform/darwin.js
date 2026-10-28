@@ -116,7 +116,11 @@ function windowTitle() {
   try {
     const out = [null];
     if (api.AXUIElementCopyAttributeValue(win, attrs.title, out) !== 0 || !out[0]) return '';
-    return cleanTitle(cfString(out[0]));
+    try {
+      return cleanTitle(cfString(out[0]));
+    } finally {
+      api.CFRelease(out[0]);
+    }
   } finally {
     api.CFRelease(win);
   }

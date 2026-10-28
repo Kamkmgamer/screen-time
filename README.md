@@ -88,7 +88,7 @@ One file, written atomically, at most every 15 seconds while tracking. Deleting 
 | `app/` | renderer: shell, three screens, settings, bundled Geist fonts |
 | `app/icons/` | brand glyphs bundled from [thesvg.org](https://thesvg.org); `sources.json` lists each slug |
 | `scripts/tracker-test.js` | the sampling rules, run by `npm test` |
-| `.github/workflows/release.yml` | tests, builds all three platforms on a `v*` tag and attaches them to the release |
+| `.github/workflows/release.yml` | tests and builds all three platforms; publishes them as a release on every merge to `main` or a pushed `v*` tag |
 
 Sample data lives in `app/demo-data.js` and is used only by `npm run demo` and the browser preview.
 
