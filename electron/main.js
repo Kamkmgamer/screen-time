@@ -1,8 +1,9 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, systemPreferences } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 
 const { Store } = require('./tracker/store');
 const { Tracker } = require('./tracker');
@@ -15,7 +16,16 @@ const SCREENSHOT = process.env.TALLY_SCREENSHOT || null;
 
 // A separate data folder (and single-instance lock) for test copies that run
 // beside an installed Tally.
-if (process.env.TALLY_USER_DATA) app.setPath('userData', path.resolve(process.env.TALLY_USER_DATA));
+if (process.env.TALLY_USER_DATA) {
+  const dir = path.resolve(process.env.TALLY_USER_DATA);
+  // app.setPath throws when the directory does not exist.
+  fs.mkdirSync(dir, { recursive: true });
+  app.setPath('userData', dir);
+}
+
+// Demo and screenshot runs must never touch the network; the startup gate and
+// the settings toggle both go through this.
+const updatesAllowed = (settings) => settings.autoUpdate && !DEMO && !SCREENSHOT;
 let win = null;
 let tray = null;
 let store = null;
@@ -91,7 +101,8 @@ function snapshot() {
       version: app.getVersion(),
       dataPath: store.file,
       browserList: DEMO ? demoBrowserList() : browsers.browserAvailability(),
-      supported: process.platform === 'win32',
+      supported: tracker.status.supported,
+      permissions: { accessibility: tracker.status.accessibility },
       startedAt: store.data.createdAt,
       update: updater ? updater.getState() : { supported: false, enabled: false, status: 'idle' },
       storedDays: storedKeys.length,
@@ -128,7 +139,7 @@ function createWindow() {
   win.loadFile(path.join(ROOT, 'app', 'index.html'),
     SCREENSHOT && process.env.TALLY_ROUTE ? { hash: `/${process.env.TALLY_ROUTE}` } : undefined);
   win.once('ready-to-show', () => {
-    if (!process.argv.includes('--hidden') && !SCREENSHOT) win.show();
+    if (!process.argv.includes('--hidden') && !SCREENSHOT && !openedAtLogin()) win.show();
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
@@ -169,7 +180,10 @@ function createWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(ROOT, 'build', 'tray-32.png'));
+  // macOS wants a template image so the menu bar can tint it; Electron picks
+  // up trayTemplate@2x.png for Retina itself.
+  const icon = nativeImage.createFromPath(path.join(ROOT, 'build',
+    process.platform === 'darwin' ? 'trayTemplate.png' : 'tray-32.png'));
   tray = new Tray(icon);
   tray.setToolTip('Tally - screen time');
   const rebuild = () => {
@@ -197,15 +211,46 @@ function createTray() {
   tray.on('double-click', () => { if (win) { win.show(); win.focus(); } });
 }
 
-function applyLoginItem(settings) {
-  if (process.platform !== 'win32') return;
+// macOS login items take no arguments, so a login launch can't carry
+// --hidden; the login-item record says whether this launch was one.
+function openedAtLogin() {
   try {
-    app.setLoginItemSettings({
-      openAtLogin: Boolean(settings.launchAtLogin),
-      path: process.execPath,
-      // In dev, Electron needs the app folder as its first argument; a packaged Tally does not.
-      args: app.isPackaged ? ['--hidden'] : [ROOT, '--hidden'],
-    });
+    const settings = app.getLoginItemSettings();
+    return Boolean(settings && (settings.wasOpenedAtLogin || settings.wasOpenedAsHidden));
+  } catch {
+    return false;
+  }
+}
+
+// A quoted Exec argument escapes ", `, $ and \ with a backslash, and a
+// literal % is written %% (a bare % starts a field code).
+function execArg(value) {
+  return `"${String(value).replace(/[\\"`$]/g, '\\$&').replace(/%/g, '%%')}"`;
+}
+
+function applyLoginItem(settings) {
+  try {
+    if (process.platform === 'win32') {
+      app.setLoginItemSettings({
+        openAtLogin: Boolean(settings.launchAtLogin),
+        path: process.execPath,
+        // In dev, Electron needs the app folder as its first argument; a packaged Tally does not.
+        args: app.isPackaged ? ['--hidden'] : [ROOT, '--hidden'],
+      });
+    } else if (process.platform === 'darwin') {
+      app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtLogin) });
+    } else if (process.platform === 'linux') {
+      // Linux has no login-item API; an autostart .desktop file is the convention.
+      const file = path.join(os.homedir(), '.config', 'autostart', 'tally.desktop');
+      if (!settings.launchAtLogin) {
+        fs.rmSync(file, { force: true });
+        return;
+      }
+      const exe = process.env.APPIMAGE || process.execPath;
+      const args = app.isPackaged ? '--hidden' : `${execArg(ROOT)} --hidden`;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `[Desktop Entry]\nType=Application\nName=Tally\nExec=${execArg(exe)} ${args}\nX-GNOME-Autostart-enabled=true\n`);
+    }
   } catch (error) {
     console.error('[tally] could not set login item:', error.message);
   }
@@ -221,7 +266,7 @@ function registerIpc() {
     const before = { ...store.settings };
     const settings = store.updateSettings(patch && typeof patch === 'object' ? patch : {});
     if (settings.launchAtLogin !== before.launchAtLogin) applyLoginItem(settings);
-    if (settings.autoUpdate !== before.autoUpdate && updater) updater.setEnabled(settings.autoUpdate);
+    if (settings.autoUpdate !== before.autoUpdate && updater) updater.setEnabled(updatesAllowed(settings));
     if (settings.sampleSeconds !== before.sampleSeconds) tracker.restart();
     if (settings.paused !== before.paused) {
       send('tally:changed', { at: Date.now() });
@@ -249,6 +294,11 @@ function registerIpc() {
     browsers.discoverProfiles(true);
     return browsers.browserAvailability();
   });
+  ipcMain.handle('tally:permissions:accessibility', () => {
+    // Prompts macOS for the Accessibility grant on first call, then reports it.
+    if (process.platform !== 'darwin' || typeof systemPreferences.isTrustedAccessibilityClient !== 'function') return false;
+    return Boolean(systemPreferences.isTrustedAccessibilityClient(true));
+  });
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -259,8 +309,11 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    app.setAppUserModelId('com.tally.screentime');
-    Menu.setApplicationMenu(null);
+    if (process.platform === 'win32') app.setAppUserModelId('com.tally.screentime');
+    // macOS needs a real menu bar for Cmd+Q/C/V to work; other OSes hide it.
+    Menu.setApplicationMenu(process.platform === 'darwin'
+      ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }])
+      : null);
 
     store = new Store(path.join(app.getPath('userData'), 'tally-data.json')).load();
     if (DEMO) {
@@ -272,7 +325,7 @@ if (!app.requestSingleInstanceLock()) {
     // new status or every tenth percent.
     let lastUpdate = { status: null, percent: -10 };
     updater = new Updater({
-      enabled: store.settings.autoUpdate && !DEMO && !SCREENSHOT,
+      enabled: updatesAllowed(store.settings),
       onChange: (state) => {
         const statusChanged = state.status !== lastUpdate.status;
         if (!statusChanged && Math.abs(state.percent - lastUpdate.percent) < 10) return;
