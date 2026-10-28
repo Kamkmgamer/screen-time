@@ -19,6 +19,7 @@
     "dist:dir": "node scripts/build-native.js && electron-builder --dir"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "koffi": "^2.14.1",
     "sql.js": "^1.13.0"
   },
@@ -68,7 +69,15 @@
       "shortcutName": "Tally",
       "uninstallDisplayName": "Tally",
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "screen-gd",
+        "repo": "screen-time",
+        "releaseType": "release"
+      }
+    ]
   },
   "allowScripts": {
     "electron@40.10.6": true,

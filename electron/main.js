@@ -7,14 +7,20 @@ const fs = require('node:fs');
 const { Store } = require('./tracker/store');
 const { Tracker } = require('./tracker');
 const browsers = require('./tracker/browsers');
+const { Updater } = require('./updater');
 
 const ROOT = path.join(__dirname, '..');
 const DEMO = process.env.TALLY_DEMO === '1' || process.argv.includes('--demo');
 const SCREENSHOT = process.env.TALLY_SCREENSHOT || null;
+
+// A separate data folder (and single-instance lock) for test copies that run
+// beside an installed Tally.
+if (process.env.TALLY_USER_DATA) app.setPath('userData', path.resolve(process.env.TALLY_USER_DATA));
 let win = null;
 let tray = null;
 let store = null;
 let tracker = null;
+let updater = null;
 let changeTimer = null;
 let rebuildTrayMenu = null;
 
@@ -87,6 +93,7 @@ function snapshot() {
       browserList: DEMO ? demoBrowserList() : browsers.browserAvailability(),
       supported: process.platform === 'win32',
       startedAt: store.data.createdAt,
+      update: updater ? updater.getState() : { supported: false, enabled: false, status: 'idle' },
       storedDays: storedKeys.length,
       oldestDay: storedKeys[0] || null,
       fileSize,
@@ -177,6 +184,9 @@ function createTray() {
           send('tally:changed', { at: Date.now() });
         },
       },
+      ...(updater && updater.state.status === 'ready'
+        ? [{ type: 'separator' }, { label: `Restart to update to ${updater.state.version}`, click: () => updater.install() }]
+        : []),
       { type: 'separator' },
       { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
     ]));
@@ -211,6 +221,7 @@ function registerIpc() {
     const before = { ...store.settings };
     const settings = store.updateSettings(patch && typeof patch === 'object' ? patch : {});
     if (settings.launchAtLogin !== before.launchAtLogin) applyLoginItem(settings);
+    if (settings.autoUpdate !== before.autoUpdate && updater) updater.setEnabled(settings.autoUpdate);
     if (settings.sampleSeconds !== before.sampleSeconds) tracker.restart();
     if (settings.paused !== before.paused) {
       send('tally:changed', { at: Date.now() });
@@ -228,6 +239,11 @@ function registerIpc() {
   ipcMain.handle('tally:open-data-folder', () => {
     shell.showItemInFolder(store.file);
     return true;
+  });
+  ipcMain.handle('tally:update:install', () => (updater ? updater.install() : false));
+  ipcMain.handle('tally:update:check', () => {
+    if (updater) updater.check();
+    return updater ? updater.getState() : null;
   });
   ipcMain.handle('tally:browsers:rescan', () => {
     browsers.discoverProfiles(true);
@@ -251,6 +267,20 @@ if (!app.requestSingleInstanceLock()) {
       const demo = require('../app/demo-data.js');
       store.loadDemo(demo.buildDays(30));
     }
+
+    // Download progress arrives many times a second; the window only needs a
+    // new status or every tenth percent.
+    let lastUpdate = { status: null, percent: -10 };
+    updater = new Updater({
+      enabled: store.settings.autoUpdate && !DEMO && !SCREENSHOT,
+      onChange: (state) => {
+        const statusChanged = state.status !== lastUpdate.status;
+        if (!statusChanged && Math.abs(state.percent - lastUpdate.percent) < 10) return;
+        lastUpdate = { status: state.status, percent: state.percent };
+        send('tally:changed', { at: Date.now() });
+        if (statusChanged && rebuildTrayMenu) rebuildTrayMenu();
+      },
+    });
 
     tracker = new Tracker({ store });
     tracker.on('change', broadcast);

@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('tally', {
   clearData: () => ipcRenderer.invoke('tally:clear'),
   openDataFolder: () => ipcRenderer.invoke('tally:open-data-folder'),
   rescanBrowsers: () => ipcRenderer.invoke('tally:browsers:rescan'),
+  installUpdate: () => ipcRenderer.invoke('tally:update:install'),
+  checkForUpdates: () => ipcRenderer.invoke('tally:update:check'),
   onChanged: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('tally:changed', listener);

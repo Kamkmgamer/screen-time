@@ -2,13 +2,15 @@
 
 A local screen-time tracker for Windows. It records the app in front of you and, when that app is a browser, the site on screen. Four screens: Today, Apps, Websites and Settings.
 
-No account, no extension, no upload, no network requests. One JSON file on this PC.
+No account, no extension, no upload. One JSON file on this PC. The only network request is the update check against this repository's releases, and Settings can turn it off.
 
 ## Install
 
 Download `Tally-Setup-<version>.exe` from [Releases](https://github.com/screen-gd/screen-time/releases) and run it. The installer is per-user, so it needs no administrator password, and it can create a desktop shortcut.
 
 The build is unsigned, so Windows SmartScreen may ask you to confirm the first launch. The source for every release is the tagged commit in this repository; the installer is built by [`.github/workflows/release.yml`](.github/workflows/release.yml) on GitHub Actions.
+
+Tally updates itself. It checks Releases shortly after it starts and every six hours, downloads a new version in the background and installs it when Tally quits. Settings > About shows the status, has a "Restart to update" button and can turn updates off.
 
 ## Run from source
 
