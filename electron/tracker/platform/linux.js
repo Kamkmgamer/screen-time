@@ -46,6 +46,8 @@ function ensure() {
       request_code: 'uint8_t',
       minor_code: 'uint8_t',
     });
+    // Declared before XSetErrorHandler, whose signature names it.
+    koffi.proto('int tallyXErrorHandler(void *display, XErrorEvent *event)');
     api = {
       XOpenDisplay: x11.func('void *XOpenDisplay(const char *display_name)'),
       // XDefaultRootWindow is a macro in Xlib.h, not an exported symbol.
@@ -55,7 +57,7 @@ function ensure() {
       // Window and Atom are C unsigned longs; Bool is int; longs are 8 bytes.
       XGetWindowProperty: x11.func('int XGetWindowProperty(void *display, unsigned long w, unsigned long property, long long_offset, long long_length, int delete, unsigned long req_type, _Out_ unsigned long *actual_type_return, _Out_ int *actual_format_return, _Out_ unsigned long *nitems_return, _Out_ unsigned long *bytes_after_return, _Out_ void **prop_return)'),
       XFree: x11.func('int XFree(void *data)'),
-      XSetErrorHandler: x11.func('void *XSetErrorHandler(void *handler)'),
+      XSetErrorHandler: x11.func('void *XSetErrorHandler(tallyXErrorHandler *handler)'),
     };
     display = api.XOpenDisplay(null);
     if (!display) {
@@ -65,8 +67,8 @@ function ensure() {
     }
     // The default error handler exits the process, and a window closing between
     // reads raises BadWindow on the next property read. Swallow X errors and
-    // let the next tick retry.
-    xErrorHandler = koffi.register(() => 0, koffi.proto('int tallyXErrorHandler(void *display, XErrorEvent *event)'));
+    // let the next tick retry. koffi.register wants the pointer type 'Name *'.
+    xErrorHandler = koffi.register(() => 0, 'tallyXErrorHandler *');
     api.XSetErrorHandler(xErrorHandler);
     root = Number(api.XRootWindow(display, api.XDefaultScreen(display)));
     atoms = {};
