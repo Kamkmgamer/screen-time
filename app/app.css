@@ -241,6 +241,8 @@ svg { display: block; flex: none; }
   transition: color 100ms var(--ease);
 }
 .state-action:hover { color: var(--text); }
+/* sits above the status well once an update has downloaded */
+.update-action { margin: 0 0 10px; color: var(--text); }
 
 #preview-note {
   margin: 12px 0 0 6px;

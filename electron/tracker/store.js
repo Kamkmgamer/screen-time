@@ -13,6 +13,7 @@ const DEFAULTS = {
     paused: false,
     recordWebsites: true,
     launchAtLogin: false,
+    autoUpdate: true, // check GitHub releases and install on quit
     retentionDays: 90,
     browsers: null, // null means every detected browser
   },
@@ -87,6 +88,7 @@ class Store {
     next.paused = Boolean(next.paused);
     next.recordWebsites = Boolean(next.recordWebsites);
     next.launchAtLogin = Boolean(next.launchAtLogin);
+    next.autoUpdate = next.autoUpdate !== false;
     next.browsers = Array.isArray(next.browsers) ? next.browsers.map(String) : null;
     this.data.settings = next;
     this.scheduleSave();

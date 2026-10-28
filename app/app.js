@@ -882,9 +882,19 @@
         h('div', { class: 'row-r' },
           h('button', { class: 'btn btn-danger', type: 'button', onclick: () => dialog.showModal() }, 'Delete data…'))));
 
+    const update = system.update || { supported: false };
     const about = h('section', { class: 'group slab', id: 'group-about' },
       groupHead('About'),
-      h('p', { class: 'about', text: 'Tally keeps one JSON file on this PC. No account, no upload, no network requests.' }),
+      h('p', { class: 'about', text: update.supported
+        ? 'Tally keeps one JSON file on this PC. No account and no upload. Its only network request checks GitHub for a new version, and only while updates are on.'
+        : 'Tally keeps one JSON file on this PC. No account, no upload, no network requests.' }),
+      update.supported
+        ? [
+          switchRow('Install updates automatically', 'Downloads new versions from GitHub and installs them when Tally quits.',
+            settings.autoUpdate !== false, () => saveSettings({ autoUpdate: settings.autoUpdate === false })),
+          updateRow(update),
+        ]
+        : null,
       h('div', { class: 'about-meta' },
         h('span', { class: 'num', text: `Tally ${system.version}` }),
         h('span', { class: 'num', text: platform })),
@@ -901,6 +911,44 @@
     return h('div', { class: 'page-inner' },
       header,
       h('div', { class: 'settings' }, indexRail, panel));
+  }
+
+  // One line on where updating stands, with the action that fits it.
+  function updateRow(update) {
+    const copy = updateCopy(update);
+    if (!copy) return null;
+    const action = update.status === 'ready'
+      ? h('button', { class: 'btn', type: 'button', onclick: () => api.installUpdate() }, 'Restart to update')
+      : update.enabled && update.status !== 'checking' && update.status !== 'downloading'
+        ? h('button', { class: 'link-btn', type: 'button', onclick: () => checkForUpdates() }, 'Check now')
+        : null;
+    return h('div', { class: 'row' },
+      h('div', null,
+        h('div', { class: 'row-t', text: copy.title }),
+        copy.detail ? h('div', { class: 'row-d', text: copy.detail }) : null),
+      action ? h('div', { class: 'row-r' }, action) : null);
+  }
+
+  function updateCopy(update) {
+    const checked = update.checkedAt ? `Checked ${clockOf(update.checkedAt)}` : null;
+    switch (update.status) {
+      case 'checking': return { title: 'Checking for updates…' };
+      case 'downloading': return { title: `Downloading ${update.version || 'update'}`, detail: `${update.percent || 0}%` };
+      case 'ready': return { title: `Version ${update.version} is ready`, detail: 'It installs when Tally quits, or restart now.' };
+      case 'current': return { title: 'Tally is up to date', detail: checked };
+      case 'error': return { title: 'Couldn’t check for updates', detail: update.error || checked };
+      default: return update.enabled ? { title: 'Updates are on', detail: 'The first check runs shortly after Tally starts.' } : null;
+    }
+  }
+
+  async function checkForUpdates() {
+    try {
+      const next = await api.checkForUpdates();
+      if (next && state.snapshot) state.snapshot.system.update = next;
+      render();
+    } catch {
+      // the next scheduled check will try again
+    }
   }
 
   function groupHead(title, meta) {
@@ -1006,7 +1054,13 @@
       ? (snap.tracking.app ? shortName(snap.tracking.app) : null)
       : copy.reason === 'self' ? null : copy.why;
 
-    host.replaceChildren(h('div', { class: 'state' },
+    const update = snap.system.update || {};
+    const ready = update.status === 'ready'
+      ? h('button', { class: 'state-action update-action', type: 'button', onclick: () => api.installUpdate() },
+        `Restart to update to ${update.version}`)
+      : null;
+
+    host.replaceChildren(ready, h('div', { class: 'state' },
       h('div', { class: 'state-head' },
         h('span', { class: `dot${copy.dot ? '' : ' hollow'}` }),
         h('span', { class: 'state-label', text: copy.label, title: copy.label })),
@@ -1169,7 +1223,7 @@
     const days = window.TallyDemo ? window.TallyDemo.buildDays(30) : { days: {} };
     const settings = {
       sampleSeconds: 5, idleSeconds: 120, mediaCeilingMinutes: 120, paused: false,
-      recordWebsites: true, launchAtLogin: false, retentionDays: 90, browsers: null,
+      recordWebsites: true, launchAtLogin: false, autoUpdate: true, retentionDays: 90, browsers: null,
     };
     const browserList = [
       { id: 'chrome', name: 'Google Chrome', profiles: 1, installed: true },
@@ -1207,6 +1261,10 @@
           dataPath: 'C:\\Users\\you\\AppData\\Roaming\\Tally\\tally-data.json',
           browserList, supported: true, startedAt: new Date(Date.now() - 30 * 86400000).toISOString(),
           storedDays: keys.length, oldestDay: keys[0] || null, fileSize: JSON.stringify(days).length,
+          update: {
+            supported: true, enabled: settings.autoUpdate !== false, status: 'current',
+            version: null, percent: 0, checkedAt: Date.now() - 42 * 60000, error: null,
+          },
         },
       };
     }
@@ -1224,6 +1282,8 @@
       },
       openDataFolder: async () => true,
       rescanBrowsers: async () => browserList,
+      installUpdate: async () => false,
+      checkForUpdates: async () => snapshot().system.update,
       onChanged: () => () => {},
     };
   }
