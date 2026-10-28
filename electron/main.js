@@ -158,7 +158,7 @@ function createWindow() {
         try {
           if (process.env.TALLY_SCROLL === '1') {
             win.show();
-            await win.webContents.executeJavaScript("document.getElementById('view').scrollTo(0, document.getElementById('view').scrollHeight)");
+            await win.webContents.executeJavaScript("const s = document.querySelector('.page-body'); if (s) s.scrollTo(0, s.scrollHeight)");
             await new Promise((resolve) => setTimeout(resolve, 320));
           }
           if (process.env.TALLY_DIALOG === '1') {
@@ -319,6 +319,8 @@ if (!app.requestSingleInstanceLock()) {
     if (DEMO) {
       const demo = require('../app/demo-data.js');
       store.loadDemo(demo.buildDays(30));
+      // Screenshots of a non-default theme: TALLY_THEME=forest electron . --demo
+      if (process.env.TALLY_THEME) store.updateSettings({ theme: { preset: process.env.TALLY_THEME } });
     }
 
     // Download progress arrives many times a second; the window only needs a
