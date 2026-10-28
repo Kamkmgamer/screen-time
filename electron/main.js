@@ -16,7 +16,16 @@ const SCREENSHOT = process.env.TALLY_SCREENSHOT || null;
 
 // A separate data folder (and single-instance lock) for test copies that run
 // beside an installed Tally.
-if (process.env.TALLY_USER_DATA) app.setPath('userData', path.resolve(process.env.TALLY_USER_DATA));
+if (process.env.TALLY_USER_DATA) {
+  const dir = path.resolve(process.env.TALLY_USER_DATA);
+  // app.setPath throws when the directory does not exist.
+  fs.mkdirSync(dir, { recursive: true });
+  app.setPath('userData', dir);
+}
+
+// Demo and screenshot runs must never touch the network; the startup gate and
+// the settings toggle both go through this.
+const updatesAllowed = (settings) => settings.autoUpdate && !DEMO && !SCREENSHOT;
 let win = null;
 let tray = null;
 let store = null;
@@ -240,7 +249,7 @@ function registerIpc() {
     const before = { ...store.settings };
     const settings = store.updateSettings(patch && typeof patch === 'object' ? patch : {});
     if (settings.launchAtLogin !== before.launchAtLogin) applyLoginItem(settings);
-    if (settings.autoUpdate !== before.autoUpdate && updater) updater.setEnabled(settings.autoUpdate);
+    if (settings.autoUpdate !== before.autoUpdate && updater) updater.setEnabled(updatesAllowed(settings));
     if (settings.sampleSeconds !== before.sampleSeconds) tracker.restart();
     if (settings.paused !== before.paused) {
       send('tally:changed', { at: Date.now() });
@@ -299,7 +308,7 @@ if (!app.requestSingleInstanceLock()) {
     // new status or every tenth percent.
     let lastUpdate = { status: null, percent: -10 };
     updater = new Updater({
-      enabled: store.settings.autoUpdate && !DEMO && !SCREENSHOT,
+      enabled: updatesAllowed(store.settings),
       onChange: (state) => {
         const statusChanged = state.status !== lastUpdate.status;
         if (!statusChanged && Math.abs(state.percent - lastUpdate.percent) < 10) return;

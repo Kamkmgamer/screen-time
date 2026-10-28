@@ -2,7 +2,7 @@
 
 A local screen-time tracker for Windows, macOS and Linux. It records the app in front of you and, when that app is a browser, the site on screen. Four screens: Today, Apps, Websites and Settings.
 
-No account, no extension, no upload. One JSON file on this computer. The only network request is the update check against this repository's releases, and Settings can turn it off.
+No account, no extension, no upload. One JSON file on this computer. Its only network traffic is for updates: checking this repository's releases and downloading new versions. Settings can turn updates off.
 
 ## Install
 
