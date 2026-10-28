@@ -134,7 +134,11 @@ jobs:
       - name: Smoke-check the foreground reader
         shell: bash
         run: |
-          osascript -e 'tell application "TextEdit" to activate' -e 'tell application "TextEdit" to make new document'
+          # 'open' goes through LaunchServices, not AppleEvents: AppleScript on
+          # a runner times out waiting for automation consent, but 'open' just
+          # launches the app with the document. The window takes the file name.
+          touch /tmp/tally-smoke.txt
+          open -a TextEdit /tmp/tally-smoke.txt
           sleep 3
           out=$(npm run check -- --expect textedit) || { echo "$out"; exit 1; }
           echo "$out"
@@ -198,7 +202,9 @@ jobs:
           xterm -T tally-smoke &
           id=""
           for i in $(seq 1 20); do
-            id=$(xdotool search --name tally-smoke | head -n 1)
+            # xdotool exits 1 while no window matches; without '|| true',
+            # pipefail + -e would abort the step on the first empty search.
+            id=$(xdotool search --name tally-smoke | head -n 1 || true)
             [ -n "$id" ] && break
             sleep 0.5
           done
@@ -211,6 +217,8 @@ jobs:
           # window id as a 32-bit CARDINAL, which is what readers expect.
           xprop -root -f _NET_ACTIVE_WINDOW 32c -set _NET_ACTIVE_WINDOW "$id"
           xprop -root _NET_ACTIVE_WINDOW
+          # Shows whether xterm set _NET_WM_PID; the check fails on pid without it.
+          xprop -id "$id"
           XDG_SESSION_TYPE=x11 npm run check -- --expect xterm
 
       - name: Stamp the version
