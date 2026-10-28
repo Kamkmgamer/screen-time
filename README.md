@@ -48,7 +48,7 @@ Every merge to `main` publishes a release. [`.github/workflows/release.yml`](.gi
 - Browsers: Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Firefox and Zen.
 - History is kept for 30, 90 or 365 days, then pruned.
 
-Pause from the tray or the sidebar. Tally can start hidden at login.
+Pause from the tray or the sidebar. Tally can start hidden at login. Settings › Appearance offers preset themes (Ink, T3 Code, T3 Chat, Forest, Fire) or a custom palette built from three colours.
 
 ## Where the data lives
 

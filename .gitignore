@@ -4,3 +4,6 @@ dist/
 *.log
 design/out/
 native/media/build/
+
+# local screenshot output
+.screenshots/

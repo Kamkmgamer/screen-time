@@ -14,11 +14,15 @@ const DEFAULTS = {
     recordWebsites: true,
     launchAtLogin: false,
     autoUpdate: true, // check GitHub releases and install on quit
+    theme: { preset: 'default', accent: '', ground: '', text: '' },
     retentionDays: 90,
     browsers: null, // null means every detected browser
   },
   days: {},
 };
+
+const THEME_PRESETS = new Set(['default', 't3code', 't3chat', 'forest', 'fire', 'custom']);
+const HEX = /^#[0-9a-f]{6}$/i;
 
 function dateKey(date = new Date()) {
   const y = date.getFullYear();
@@ -90,6 +94,13 @@ class Store {
     next.launchAtLogin = Boolean(next.launchAtLogin);
     next.autoUpdate = next.autoUpdate !== false;
     next.browsers = Array.isArray(next.browsers) ? next.browsers.map(String) : null;
+    const theme = next.theme && typeof next.theme === 'object' ? next.theme : {};
+    next.theme = {
+      preset: THEME_PRESETS.has(theme.preset) ? theme.preset : 'default',
+      accent: HEX.test(theme.accent || '') ? theme.accent : '',
+      ground: HEX.test(theme.ground || '') ? theme.ground : '',
+      text: HEX.test(theme.text || '') ? theme.text : '',
+    };
     this.data.settings = next;
     this.scheduleSave();
     return next;

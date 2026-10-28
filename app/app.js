@@ -387,7 +387,8 @@
 
     return h('div', { class: 'page-inner' },
       header,
-      h('div', { class: 'stack' }, summary, hours, lists));
+      h('div', { class: 'page-body' },
+        h('div', { class: 'stack' }, summary, hours, lists)));
   }
 
   function hourBlock(data, now) {
@@ -456,7 +457,7 @@
     if (restSeconds > 0.5) {
       rows.push(itemRow({
         glyph: glyph(null),
-        name: 'Other apps',
+        name: `Other apps (${rest.length})`,
         seconds: restSeconds,
         whole: total,
         other: true,
@@ -492,7 +493,7 @@
     if (restSeconds > 0.5) {
       rows.push(itemRow({
         glyph: glyph(null),
-        name: 'Other sites',
+        name: `Other sites (${rest.length})`,
         seconds: restSeconds,
         whole: total,
         other: true,
@@ -555,12 +556,11 @@
     const topSeconds = totalOf(top);
     const remainder = Math.max(0, total - topSeconds);
     const strip = total
-      ? h('div', { class: 'strip', 'aria-hidden': 'true' },
-        top.map((app, index) => h('i', {
-          class: texture(index),
+      ? h('div', { class: 'strip', 'aria-hidden': 'true', title: 'Each app’s share of the total' },
+        top.map((app) => h('i', {
           style: `width:${share(app.seconds, total).width}%`,
         })),
-        remainder > 0.5 ? h('i', { class: texture(-1), style: `width:${share(remainder, total).width}%` }) : null)
+        remainder > 0.5 ? h('i', { class: 'rest', style: `width:${share(remainder, total).width}%` }) : null)
       : null;
 
     const context = h('aside', { class: 'ctx slab' },
@@ -616,14 +616,15 @@
         ? h('div', { class: 'trow other' },
           h('span', { class: 'idx num', text: String(Math.min(rows.length, 8) + 1).padStart(2, '0') }),
           glyph(null),
-          h('span', { class: 'name', text: 'Other apps' }),
+          h('span', { class: 'name', text: `Other apps (${apps.length - rows.length})` }),
           h('span', { class: 'time num', text: durationText(restSeconds) }),
           h('span', { class: 'track' }, h('i', { style: `width:${share(restSeconds, total).width}%` })),
           h('span', { class: 'pct num', text: pctText(restSeconds, total) }),
           h('span'))
         : null);
 
-    return h('div', { class: 'page-inner' }, header, h('div', { class: 'split' }, context, table));
+    return h('div', { class: 'page-inner' }, header,
+      h('div', { class: 'page-body' }, h('div', { class: 'split' }, context, table)));
   }
 
   // Share strips tell parts apart by dither texture, not colour: densest for
@@ -703,7 +704,8 @@
         empty ? h('div', { class: 'sites-empty' }, empty) : null,
         browserSplit(data, total)));
 
-    return h('div', { class: 'page-inner' }, header, body);
+    return h('div', { class: 'page-inner' }, header,
+      h('div', { class: 'page-body' }, body));
   }
 
   function siteRow({ glyph: mark, name, detail, seconds, whole, other = false, dashed = false }) {
@@ -761,6 +763,7 @@
 
     const index = [
       ['recording', 'Recording'],
+      ['appearance', 'Appearance'],
       ['websites', 'Websites'],
       ['data', 'Data'],
       ['about', 'About'],
@@ -855,6 +858,33 @@
         },
       }, 'Rescan browsers'));
 
+    const theme = settings.theme && typeof settings.theme === 'object' ? settings.theme : { preset: 'default' };
+    const appearance = h('section', { class: 'group slab', id: 'group-appearance' },
+      groupHead('Appearance'),
+      h('div', { class: 'row' },
+        h('div', null,
+          h('div', { class: 'row-t', text: 'Theme' }),
+          h('div', { class: 'row-d', text: 'A preset repaints the palette. Custom lets you pick your own colours.' })),
+        h('div', { class: 'row-r' },
+          h('select', {
+            class: 'select',
+            'aria-label': 'Theme',
+            onchange: (event) => saveSettings({ theme: { ...theme, preset: event.target.value } }),
+          },
+          THEME_OPTIONS.map(([value, label]) => h('option', {
+            value,
+            selected: theme.preset === value,
+          }, label))))),
+      theme.preset === 'custom'
+        ? h('div', { class: 'fields' },
+          fieldColor('Accent', theme.accent, '#e8e8e8',
+            (value) => saveSettings({ theme: { ...theme, accent: value } })),
+          fieldColor('Background', theme.ground, '#080808',
+            (value) => saveSettings({ theme: { ...theme, ground: value } })),
+          fieldColor('Text', theme.text, '#ffffff',
+            (value) => saveSettings({ theme: { ...theme, text: value } })))
+        : null);
+
     const oldest = system.oldestDay;
     const dataGroup = h('section', { class: 'group slab', id: 'group-data' },
       groupHead('Data', formatBytes(system.fileSize || 0)),
@@ -906,11 +936,12 @@
           onclick: () => api.openDataFolder(),
         }, 'Show data folder', h('span', { class: 'ext', html: EXTERNAL }))));
 
-    const panel = h('div', { class: 'panel' }, recording, websites, dataGroup, about);
+    const panel = h('div', { class: 'panel' }, recording, appearance, websites, dataGroup, about);
 
     return h('div', { class: 'page-inner' },
       header,
-      h('div', { class: 'settings' }, indexRail, panel));
+      h('div', { class: 'page-body' },
+        h('div', { class: 'settings' }, indexRail, panel)));
   }
 
   // One line on where updating stands, with the action that fits it.
@@ -994,6 +1025,82 @@
         value: optionValue,
         selected: String(optionValue) === String(value),
       }, optionLabel))));
+  }
+
+  function fieldColor(label, value, fallback, onChange) {
+    return h('label', { class: 'field' },
+      h('span', { class: 'k', text: label }),
+      h('input', {
+        class: 'swatch-input',
+        type: 'color',
+        'aria-label': label,
+        value: isHex(value) ? value : fallback,
+        onchange: (event) => onChange(event.target.value),
+      }));
+  }
+
+  /* ---------- themes ---------- */
+
+  // Presets paint the palette in app.css; custom derives one from three picks.
+  const THEME_OPTIONS = [
+    ['default', 'Ink (default)'],
+    ['t3code', 'T3 Code'],
+    ['t3chat', 'T3 Chat'],
+    ['forest', 'Forest'],
+    ['fire', 'Fire'],
+    ['custom', 'Custom'],
+  ];
+  const THEME_IDS = new Set(THEME_OPTIONS.map(([id]) => id));
+
+  const CUSTOM_VARS = [
+    '--ground', '--glow', '--rail', '--surface', '--well', '--rule', '--border', '--control',
+    '--slab', '--key', '--key-down', '--text', '--muted', '--faint', '--quiet',
+    '--primary', '--accent', '--skeleton', '--dither-ink',
+  ];
+
+  const isHex = (value) => /^#[0-9a-f]{6}$/i.test(value || '');
+
+  function mixHex(a, b, t) {
+    const [ar, ag, ab] = [parseInt(a.slice(1, 3), 16), parseInt(a.slice(3, 5), 16), parseInt(a.slice(5, 7), 16)];
+    const [br, bg2, bb] = [parseInt(b.slice(1, 3), 16), parseInt(b.slice(3, 5), 16), parseInt(b.slice(5, 7), 16)];
+    return `#${[ar + (br - ar) * t, ag + (bg2 - ag) * t, ab + (bb - ab) * t]
+      .map((n) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  function applyTheme(theme) {
+    const el = document.documentElement;
+    const id = theme && THEME_IDS.has(theme.preset) ? theme.preset : 'default';
+    el.dataset.theme = id;
+    if (id !== 'custom') {
+      for (const key of CUSTOM_VARS) el.style.removeProperty(key);
+      return;
+    }
+    const bg = isHex(theme.ground) ? theme.ground : '#080808';
+    const fg = isHex(theme.text) ? theme.text : '#ffffff';
+    const ac = isHex(theme.accent) ? theme.accent : fg;
+    const t = (x) => mixHex(bg, fg, x);
+    const vars = {
+      '--ground': bg,
+      '--glow': t(0.07),
+      '--rail': t(0.045),
+      '--surface': t(0.07),
+      '--well': mixHex(bg, '#000000', 0.25),
+      '--rule': t(0.11),
+      '--border': t(0.15),
+      '--control': t(0.24),
+      '--slab': `linear-gradient(180deg, ${t(0.085)} 0%, ${t(0.05)} 100%)`,
+      '--key': `linear-gradient(180deg, ${t(0.17)} 0%, ${t(0.10)} 100%)`,
+      '--key-down': `linear-gradient(180deg, ${t(0.06)} 0%, ${t(0.085)} 100%)`,
+      '--text': fg,
+      '--muted': mixHex(fg, bg, 0.20),
+      '--faint': mixHex(fg, bg, 0.38),
+      '--quiet': mixHex(fg, bg, 0.50),
+      '--primary': ac,
+      '--accent': ac,
+      '--skeleton': t(0.05),
+      '--dither-ink': mixHex(fg, bg, 0.07),
+    };
+    for (const [key, value] of Object.entries(vars)) el.style.setProperty(key, value);
   }
 
   /* ---------- tracker state ---------- */
@@ -1090,6 +1197,7 @@
       return;
     }
     view.removeAttribute('aria-busy');
+    applyTheme(snap.settings && snap.settings.theme);
     const page = state.route === 'apps' ? renderApps(snap)
       : state.route === 'sites' ? renderSites(snap)
         : state.route === 'settings' ? renderSettings(snap)
@@ -1111,12 +1219,14 @@
       : route === 'today'
         ? [sk('sk-figure'), sk('sk-line'), sk('sk-chart'), rows(5)]
         : [sk('sk-figure'), h('div', { style: 'margin-top:32px' }, rows(7))];
-    return h('div', { class: 'page-inner', 'aria-hidden': 'true' }, sk('sk-title'), body);
+    return h('div', { class: 'page-inner', 'aria-hidden': 'true' },
+      sk('sk-title'), h('div', { class: 'page-body' }, body));
   }
 
   function loadError() {
     return h('div', { class: 'page-inner' },
-      h('div', { class: 'load-error list-empty' },
+      h('div', { class: 'page-body' },
+        h('div', { class: 'load-error list-empty' },
         h('p', { text: 'Couldn’t read totals.' }),
         h('button', {
           class: 'link-btn',
@@ -1126,7 +1236,7 @@
             render();
             refresh();
           },
-        }, 'Retry')));
+        }, 'Retry'))));
   }
 
   function renderNav() {
@@ -1195,7 +1305,8 @@
     state.route = readRoute();
     state.enter = true;
     render();
-    view.scrollTo({ top: 0 });
+    const scroller = view.querySelector('.page-body');
+    if (scroller) scroller.scrollTo({ top: 0 });
   });
 
   dialog.addEventListener('close', async () => {
@@ -1224,6 +1335,7 @@
     const settings = {
       sampleSeconds: 5, idleSeconds: 120, mediaCeilingMinutes: 120, paused: false,
       recordWebsites: true, launchAtLogin: false, autoUpdate: true, retentionDays: 90, browsers: null,
+      theme: { preset: 'default', accent: '', ground: '', text: '' },
     };
     const browserList = [
       { id: 'chrome', name: 'Google Chrome', profiles: 1, installed: true },
