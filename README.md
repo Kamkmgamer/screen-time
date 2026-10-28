@@ -34,13 +34,7 @@ npm run icons    # refresh the bundled brand glyphs from thesvg.org
 
 The installer is about 120 MB because it carries Chromium; the app itself is a few hundred KB.
 
-Push a tag that matches the version in `package.json` to publish a release:
-
-```bash
-npm version patch --no-git-tag-version
-git tag v1.0.1
-git push origin main --tags
-```
+Every merge to `main` publishes a release. [`.github/workflows/release.yml`](.github/workflows/release.yml) tags the merged commit with the next patch after the newest release, builds the installer with that version and attaches it. For a minor or major release, raise the version in `package.json` in the PR; the workflow uses it when it is ahead of every release.
 
 ## What it counts
 
