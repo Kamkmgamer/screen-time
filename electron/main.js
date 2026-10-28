@@ -1,8 +1,9 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme, systemPreferences } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 
 const { Store } = require('./tracker/store');
 const { Tracker } = require('./tracker');
@@ -91,7 +92,8 @@ function snapshot() {
       version: app.getVersion(),
       dataPath: store.file,
       browserList: DEMO ? demoBrowserList() : browsers.browserAvailability(),
-      supported: process.platform === 'win32',
+      supported: tracker.status.supported,
+      permissions: { accessibility: tracker.status.accessibility },
       startedAt: store.data.createdAt,
       update: updater ? updater.getState() : { supported: false, enabled: false, status: 'idle' },
       storedDays: storedKeys.length,
@@ -169,7 +171,10 @@ function createWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(ROOT, 'build', 'tray-32.png'));
+  // macOS wants a template image so the menu bar can tint it; Electron picks
+  // up trayTemplate@2x.png for Retina itself.
+  const icon = nativeImage.createFromPath(path.join(ROOT, 'build',
+    process.platform === 'darwin' ? 'trayTemplate.png' : 'tray-32.png'));
   tray = new Tray(icon);
   tray.setToolTip('Tally - screen time');
   const rebuild = () => {
@@ -198,14 +203,28 @@ function createTray() {
 }
 
 function applyLoginItem(settings) {
-  if (process.platform !== 'win32') return;
   try {
-    app.setLoginItemSettings({
-      openAtLogin: Boolean(settings.launchAtLogin),
-      path: process.execPath,
-      // In dev, Electron needs the app folder as its first argument; a packaged Tally does not.
-      args: app.isPackaged ? ['--hidden'] : [ROOT, '--hidden'],
-    });
+    if (process.platform === 'win32') {
+      app.setLoginItemSettings({
+        openAtLogin: Boolean(settings.launchAtLogin),
+        path: process.execPath,
+        // In dev, Electron needs the app folder as its first argument; a packaged Tally does not.
+        args: app.isPackaged ? ['--hidden'] : [ROOT, '--hidden'],
+      });
+    } else if (process.platform === 'darwin') {
+      app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtLogin) });
+    } else if (process.platform === 'linux') {
+      // Linux has no login-item API; an autostart .desktop file is the convention.
+      const file = path.join(os.homedir(), '.config', 'autostart', 'tally.desktop');
+      if (!settings.launchAtLogin) {
+        fs.rmSync(file, { force: true });
+        return;
+      }
+      const exe = process.env.APPIMAGE || process.execPath;
+      const args = app.isPackaged ? '--hidden' : `"${ROOT}" --hidden`;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `[Desktop Entry]\nType=Application\nName=Tally\nExec="${exe}" ${args}\nX-GNOME-Autostart-enabled=true\n`);
+    }
   } catch (error) {
     console.error('[tally] could not set login item:', error.message);
   }
@@ -249,6 +268,11 @@ function registerIpc() {
     browsers.discoverProfiles(true);
     return browsers.browserAvailability();
   });
+  ipcMain.handle('tally:permissions:accessibility', () => {
+    // Prompts macOS for the Accessibility grant on first call, then reports it.
+    if (process.platform !== 'darwin' || typeof systemPreferences.isTrustedAccessibilityClient !== 'function') return false;
+    return Boolean(systemPreferences.isTrustedAccessibilityClient(true));
+  });
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -259,8 +283,11 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    app.setAppUserModelId('com.tally.screentime');
-    Menu.setApplicationMenu(null);
+    if (process.platform === 'win32') app.setAppUserModelId('com.tally.screentime');
+    // macOS needs a real menu bar for Cmd+Q/C/V to work; other OSes hide it.
+    Menu.setApplicationMenu(process.platform === 'darwin'
+      ? Menu.buildFromTemplate([{ role: 'appMenu' }, { role: 'editMenu' }, { role: 'windowMenu' }])
+      : null);
 
     store = new Store(path.join(app.getPath('userData'), 'tally-data.json')).load();
     if (DEMO) {

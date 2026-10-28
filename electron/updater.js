@@ -21,7 +21,10 @@ class Updater {
     this.timer = null;
     this.updater = null;
     this.state = {
-      supported: app.isPackaged && process.platform !== 'darwin',
+      // macOS updates need a signed app (Squirrel.Mac refuses unsigned), and
+      // .deb installs are never updated in place. That leaves Windows and the
+      // AppImage, which only exists while APPIMAGE is set.
+      supported: app.isPackaged && (process.platform === 'win32' || (process.platform === 'linux' && Boolean(process.env.APPIMAGE))),
       status: 'idle', // idle | checking | downloading | ready | current | error
       version: null,
       percent: 0,
