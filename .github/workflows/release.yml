@@ -199,26 +199,34 @@ jobs:
           Xvfb :99 -screen 0 1280x800x24 &
           export DISPLAY=:99
           sleep 1
-          xterm -T tally-smoke &
+          xterm -T tally-smoke 2>/tmp/xterm-err.log &
+          xterm_pid=$!
           id=""
           for i in $(seq 1 20); do
             # xdotool exits 1 while no window matches; without '|| true',
             # pipefail + -e would abort the step on the first empty search.
-            id=$(xdotool search --name tally-smoke | head -n 1 || true)
+            # Search by pid (_NET_WM_PID) first, then by the -T window name.
+            id=$(xdotool search --pid "$xterm_pid" | head -n 1 || true)
+            if [ -z "$id" ]; then
+              id=$(xdotool search --name tally-smoke | head -n 1 || true)
+            fi
             [ -n "$id" ] && break
             sleep 0.5
           done
           if [ -z "$id" ]; then
             echo "::error::xterm never appeared on Xvfb"
+            cat /tmp/xterm-err.log || true
+            xwininfo -root -tree || true
             exit 1
           fi
           # xprop's format letter picks the property type: 'a' would set an
           # ATOM (and intern "$id" as an atom name); 'c' stores the numeric
-          # window id as a 32-bit CARDINAL, which is what readers expect.
+          # value as a 32-bit CARDINAL, which is what readers expect. The pid
+          # is set explicitly so the check doesn't depend on xterm publishing it.
+          xprop -id "$id" -f _NET_WM_PID 32c -set _NET_WM_PID "$xterm_pid"
           xprop -root -f _NET_ACTIVE_WINDOW 32c -set _NET_ACTIVE_WINDOW "$id"
           xprop -root _NET_ACTIVE_WINDOW
-          # Shows whether xterm set _NET_WM_PID; the check fails on pid without it.
-          xprop -id "$id"
+          xprop -id "$id" _NET_WM_PID WM_NAME
           XDG_SESSION_TYPE=x11 npm run check -- --expect xterm
 
       - name: Stamp the version
