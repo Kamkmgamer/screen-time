@@ -15,9 +15,12 @@
     snapshot: null,
     route: 'today',
     ranges: { apps: 7, sites: 7 },
-    openApp: undefined,
+    openApp: null,
     openGroup: 'recording',
     savedAt: 0,
+    enter: true,
+    loadError: false,
+    diagOpen: false,
   };
 
   const view = document.getElementById('view');
@@ -172,8 +175,9 @@
   const BROWSER_GLYPHS = ['chrome', 'edge', 'brave', 'vivaldi', 'opera', 'opera-gx', 'firefox', 'zen', 'arc'];
 
   function glyph(key, className = 'glyph') {
-    if (!key) return h('span', { class: `${className} glyph-empty`, 'aria-hidden': 'true' });
-    return h('span', { class: className, 'aria-hidden': 'true', style: `--glyph: url("icons/${key}.svg")` });
+    if (!key) return h('span', { class: 'tile tile-empty', 'aria-hidden': 'true' });
+    return h('span', { class: 'tile', 'aria-hidden': 'true' },
+      h('span', { class: className, style: `--glyph: url("icons/${key}.svg")` }));
   }
 
   function appGlyph(name, className) {
@@ -215,16 +219,19 @@
     return `${p.m} m`;
   }
 
-  function figure(seconds) {
+  // Hours and minutes as counter wheels, e.g. [0][4] h [1][2] m. Used for the
+  // large total on Today, Apps and Websites; size comes from the parent class.
+  function counter(seconds, className = '') {
     const p = durationParts(seconds);
-    const fragment = document.createDocumentFragment();
-    if (p.under) {
-      fragment.append(h('span', { text: '< 1' }), h('span', { class: 'u', text: 'm' }));
-      return fragment;
-    }
-    if (p.h) fragment.append(h('span', { text: String(p.h) }), h('span', { class: 'u', text: 'h' }));
-    if (p.m || !p.h) fragment.append(h('span', { text: String(p.m) }), h('span', { class: 'u', text: 'm' }));
-    return fragment;
+    const wheels = (value) => h('span', { class: 'wheels' },
+      String(value).padStart(2, '0').split('').map((digit) => h('span', { class: 'wheel', text: digit })));
+    return h('div', {
+      class: `counter num ${className}`.trim(),
+      role: 'img',
+      'aria-label': p.under ? 'Under a minute' : durationText(seconds),
+    },
+    wheels(p.h), h('span', { class: 'u', text: 'h' }),
+    wheels(p.m), h('span', { class: 'u', text: 'm' }));
   }
 
   function share(part, whole) {
@@ -318,17 +325,13 @@
 
   /* ---------- page shell ---------- */
 
-  function pageHead({ eyebrow, title, right }) {
+  // Screen title with its date or range beside it, and controls on the right.
+  function pageHead({ title, meta, right }) {
     return h('header', { class: 'page-head' },
-      h('div', null,
-        h('div', { class: 'eyebrow', text: eyebrow }),
-        h('h1', { text: title })),
+      h('div', { class: 'title-line' },
+        h('h1', { text: title }),
+        meta ? h('span', { class: 'head-meta', text: meta }) : null),
       right ? h('div', { class: 'head-right' }, right) : null);
-  }
-
-  function stampText(snap) {
-    if (snap.settings.paused) return 'Paused';
-    return snap.tracking.lastSampleAt ? `Updated ${clockOf(snap.tracking.lastSampleAt)}` : 'Just now';
   }
 
   function rangeControl(kind, value) {
@@ -339,8 +342,10 @@
         class: value === days ? 'on' : null,
         'aria-pressed': String(value === days),
         onclick: () => {
+          if (state.ranges[kind] === days) return;
           state.ranges[kind] = days;
-          if (kind === 'apps') state.openApp = undefined;
+          if (kind === 'apps') state.openApp = null;
+          state.enter = true;
           render();
         },
       }, label)));
@@ -356,48 +361,33 @@
 
   function renderToday(snap) {
     const data = snap.today;
-    const apps = data.apps;
-    const sites = data.sites;
     const yesterday = snap.yesterday || { totalSeconds: 0 };
     const now = new Date(snap.now || Date.now());
 
     const header = pageHead({
-      eyebrow: dayLabel(snap.todayKey),
       title: 'Today',
-      right: [h('span', { class: 'stamp num', text: stampText(snap) })],
+      meta: dayLabel(snap.todayKey),
+      right: snap.settings.paused ? [h('span', { class: 'stamp', text: 'Paused' })] : null,
     });
 
-    const summary = h('div', { class: 'summary' },
+    const summary = h('section', { class: 'summary slab' },
       h('div', { class: 'total-block' },
-        h('div', { class: 'label', text: 'Recorded today' }),
-        h('div', { class: 'total num' }, figure(data.totalSeconds)),
+        counter(data.totalSeconds, 'counter-lg'),
         h('div', { class: 'sub' },
           data.browserSeconds > 0
-            ? ['Includes ', h('b', { class: 'num', text: durationText(data.browserSeconds) }), ' in browsers']
-            : (data.totalSeconds > 0 ? 'No browser time today.' : 'Nothing recorded yet today.'))),
+            ? [h('b', { class: 'num', text: durationText(data.browserSeconds) }), ' in browsers']
+            : (data.totalSeconds > 0 ? 'No browser time today' : 'Nothing recorded yet today'))),
       h('dl', { class: 'mini' },
         h('div', null,
-          h('dt', { text: 'Yesterday, whole day' }),
-          h('dd', { class: 'num', text: yesterday.totalSeconds ? durationText(yesterday.totalSeconds) : '—' })),
-        h('div', null,
-          h('dt', { text: 'Apps' }),
-          h('dd', { class: 'num', text: String(apps.length) })),
-        h('div', null,
-          h('dt', { text: 'Websites' }),
-          h('dd', { class: 'num', text: String(sites.length) }))));
+          h('dt', { text: 'Yesterday' }),
+          h('dd', { class: 'num', text: yesterday.totalSeconds ? durationText(yesterday.totalSeconds) : '—' }))));
 
     const hours = hourBlock(data, now);
     const lists = h('div', { class: 'lists' }, appList(data, snap), siteList(data, snap));
 
-    const page = h('div', { class: 'page-inner' },
+    return h('div', { class: 'page-inner' },
       header,
-      h('section', { class: 'sheet' },
-        summary,
-        h('div', { class: 'rule' }),
-        hours,
-        h('div', { class: 'rule' }),
-        lists));
-    return page;
+      h('div', { class: 'stack' }, summary, hours, lists));
   }
 
   function hourBlock(data, now) {
@@ -433,10 +423,11 @@
       Array.from({ length: 24 }, (_, hour) => h('div', { class: `cell${labelAt(hour) ? ' on' : ''}` },
         labelAt(hour) ? h('span', { text: String(hour).padStart(2, '0') }) : null)));
 
-    return h('div', { class: 'hours' },
+    return h('section', { class: 'hours slab' },
       h('div', { class: 'hours-head' },
         h('div', { class: 'hours-title', text: 'By hour' }),
         meta),
+      h('div', { class: 'screen' },
       h('div', {
         class: 'chart',
         role: 'img',
@@ -446,7 +437,7 @@
       },
         futureWidth ? h('div', { class: 'future', style: `width:${futureWidth}%`, 'aria-hidden': 'true' }) : null,
         columns),
-      axis);
+      axis));
   }
 
   function appList(data, snap) {
@@ -472,10 +463,10 @@
       }));
     }
 
-    return h('section', { class: 'list' },
+    return h('section', { class: 'list slab' },
       h('div', { class: 'list-head' },
         h('div', { class: 'list-title', text: 'Apps' }),
-        h('div', { class: 'list-meta', text: 'Share of recorded time' })),
+        apps.length ? h('div', { class: 'list-meta num', text: plural(apps.length, 'app', 'apps') }) : null),
       apps.length
         ? rows
         : listEmpty([snap.settings.paused
@@ -510,7 +501,7 @@
     if (unattributed > 0.5) {
       rows.push(itemRow({
         glyph: glyph(null),
-        name: 'No site name',
+        name: 'Unmatched',
         seconds: unattributed,
         whole: total,
         other: true,
@@ -526,10 +517,10 @@
       empty = listEmpty(['No browser time yet today.', 'Time in a browser will be matched to the page it shows.']);
     }
 
-    return h('section', { class: 'list' },
+    return h('section', { class: 'list slab' },
       h('div', { class: 'list-head' },
         h('div', { class: 'list-title', text: 'Websites' }),
-        h('div', { class: 'list-meta', text: 'Share of browser time' })),
+        sites.length ? h('div', { class: 'list-meta num', text: plural(sites.length, 'site', 'sites') }) : null),
       empty && !rows.length ? empty : rows,
       empty && rows.length ? h('div', { class: 'list-foot' }, empty) : null);
   }
@@ -555,9 +546,9 @@
     const apps = data.apps;
 
     const header = pageHead({
-      eyebrow: rangeLabel(days, snap.todayKey),
       title: 'Apps',
-      right: [rangeControl('apps', days), h('span', { class: 'stamp num', text: `${plural(apps.length, 'app', 'apps')} · Updated ${clockOf(snap.tracking.lastSampleAt)}` })],
+      meta: rangeLabel(days, snap.todayKey),
+      right: [rangeControl('apps', days)],
     });
 
     const top = apps.slice(0, 5);
@@ -566,26 +557,24 @@
     const strip = total
       ? h('div', { class: 'strip', 'aria-hidden': 'true' },
         top.map((app, index) => h('i', {
-          style: `width:${share(app.seconds, total).width}%;background:${STRIP_COLOURS[index % STRIP_COLOURS.length]}`,
+          class: texture(index),
+          style: `width:${share(app.seconds, total).width}%`,
         })),
-        remainder > 0.5 ? h('i', { style: `width:${share(remainder, total).width}%;background:#e2e6eb` }) : null)
+        remainder > 0.5 ? h('i', { class: texture(-1), style: `width:${share(remainder, total).width}%` }) : null)
       : null;
 
-    const context = h('aside', { class: 'ctx' },
-      h('div', { class: 'label', text: 'Recorded' }),
-      h('div', { class: 'big num' }, figure(total)),
+    const context = h('aside', { class: 'ctx slab' },
+      counter(total),
       h('div', { class: 'ctx-sub', text: total
         ? `Across ${plural(apps.length, 'app', 'apps')}, ${days === 1 ? 'today' : `${days} days`}`
         : 'Nothing recorded in this range' }),
-      strip,
-      total ? h('div', { class: 'ctx-legend', text: `${top.length === 1 ? '1 app holds' : `${top.length} apps hold`} ${pctText(topSeconds, total)} of recorded time.` }) : null,
-      h('div', { class: 'ctx-note', text: 'A window title is the last one seen, not a duration. Open a row to read it.' }));
+      strip);
 
-    const openKey = state.openApp === undefined ? (apps[0] ? apps[0].key : null) : state.openApp;
+    const openKey = state.openApp;
     const rows = apps.slice(0, 8);
     const restSeconds = Math.max(0, total - totalOf(rows));
 
-    const table = h('div', { class: 'table' },
+    const table = h('div', { class: 'table slab' },
       h('div', { class: 'thead' },
         h('span'),
         h('span'),
@@ -615,9 +604,8 @@
             h('span', { class: 'pct num', text: pctText(app.seconds, total) }),
             h('span', { class: 'chev-wrap', html: CHEVRON })),
             open ? h('div', { class: 'title-row' },
-              h('span', { class: 'title-k', text: 'Last title' }),
-              h('span', { class: 'title-v', text: app.title || 'No window title recorded', title: app.title || '' }),
-              h('span', { class: 'title-t num', text: app.lastAt ? `${SHORT_DAY.format(new Date(app.lastAt))}, ${clockOf(app.lastAt)}` : '' })) : null,
+              h('div', { class: 'title-v', text: app.title || 'No window title recorded' }),
+              app.lastAt ? h('div', { class: 'title-t num', text: `Last seen ${SHORT_DAY.format(new Date(app.lastAt))}, ${clockOf(app.lastAt)}` }) : null) : null,
           ];
         })
         : h('div', { class: 'table-empty' },
@@ -627,7 +615,7 @@
       apps.length && restSeconds > 0.5
         ? h('div', { class: 'trow other' },
           h('span', { class: 'idx num', text: String(Math.min(rows.length, 8) + 1).padStart(2, '0') }),
-          h('span', { class: 'glyph glyph-empty', 'aria-hidden': 'true' }),
+          glyph(null),
           h('span', { class: 'name', text: 'Other apps' }),
           h('span', { class: 'time num', text: durationText(restSeconds) }),
           h('span', { class: 'track' }, h('i', { style: `width:${share(restSeconds, total).width}%` })),
@@ -638,7 +626,14 @@
     return h('div', { class: 'page-inner' }, header, h('div', { class: 'split' }, context, table));
   }
 
-  const STRIP_COLOURS = ['#39414b', '#5f6874', '#8b949f', '#b5bdc8', '#d8dde3'];
+  // Share strips tell parts apart by dither texture, not colour: densest for
+  // the largest part. Textures live in dither.css (scripts/make-dither.js).
+  const STRIP_TEXTURES = ['solid', 'l75', 'l50', 'dotted', 'hatched'];
+
+  // Class list for part `index` of a strip; -1 is the remainder.
+  function texture(index) {
+    return `tex tex-${index < 0 ? 'l12' : STRIP_TEXTURES[index % STRIP_TEXTURES.length]}`;
+  }
 
   /* ---------- websites ---------- */
 
@@ -654,9 +649,9 @@
     const unattributed = Math.max(0, total - namedSeconds);
 
     const header = pageHead({
-      eyebrow: rangeLabel(days, snap.todayKey),
       title: 'Websites',
-      right: [rangeControl('sites', days), h('span', { class: 'stamp num', text: `${plural(sites.length, 'site', 'sites')} named` })],
+      meta: rangeLabel(days, snap.todayKey),
+      right: [rangeControl('sites', days)],
     });
 
     const rows = shown.map((site) => siteRow({
@@ -680,7 +675,7 @@
     if (unattributed > 0.5) {
       rows.push(siteRow({
         glyph: glyph(null),
-        name: 'Browser time without a website name',
+        name: 'Unmatched browser time',
         detail: snap.settings.recordWebsites ? 'No recent match in history' : 'Naming is turned off',
         seconds: unattributed,
         whole: total,
@@ -688,11 +683,9 @@
       }));
     }
 
-    const meta = total
-      ? h('div', { class: 'hours-meta' },
-        h('span', { class: 'num', text: `${durationText(total)} in browsers` }),
-        h('span', { class: 'faint num', text: unattributed > 0.5 ? `${durationText(unattributed)} without a site name` : 'Every browser minute named' }))
-      : h('div', { class: 'hours-meta' }, h('span', { class: 'faint', text: 'No browser time in this range.' }));
+    const figureRow = h('div', { class: 'sites-figure slab' },
+      counter(total),
+      h('div', { class: 'ctx-sub', text: total ? `in browsers across ${plural(sites.length, 'site', 'sites')}` : 'No browser time in this range' }));
 
     let empty = null;
     if (!snap.settings.recordWebsites) {
@@ -704,13 +697,11 @@
     }
 
     const body = h('section', { class: 'sites' },
-      h('div', { class: 'sites-head' },
-        h('div', { class: 'hours-title', text: 'Share of browser time' }),
-        meta),
-      rows.length ? rows : null,
-      empty ? h('div', { class: 'sites-empty' }, empty) : null,
-      rows.length ? h('div', { class: 'sites-note', text: 'Names come from each browser’s own history, matched against the window title. Tally copies the file, reads it here and deletes the copy. Nothing is uploaded.' }) : null,
-      browserSplit(data, total));
+      figureRow,
+      h('div', { class: 'site-list slab' },
+        rows.length ? rows : null,
+        empty ? h('div', { class: 'sites-empty' }, empty) : null,
+        browserSplit(data, total)));
 
     return h('div', { class: 'page-inner' }, header, body);
   }
@@ -721,9 +712,9 @@
       h('div', { class: 'site-line' },
         mark || null,
         h('span', { class: 'site-name', text: name, title: name }),
-        h('span', { class: 'site-browser', text: detail, title: detail }),
         h('span', { class: 'site-time num', text: durationText(seconds) }),
-        h('span', { class: 'site-pct num', text: part.text })),
+        h('span', { class: 'site-pct num', text: part.text }),
+        h('span', { class: 'site-detail', text: detail, title: detail })),
       h('div', { class: `track${dashed ? ' dashed' : ''}` }, dashed ? null : h('i', { style: `width:${part.width}%` })));
   }
 
@@ -736,16 +727,17 @@
     const pieces = top.map((app, index) => ({
       name: shortName(app.browser),
       seconds: app.seconds,
-      colour: STRIP_COLOURS[index % STRIP_COLOURS.length],
+      texture: texture(index),
     }));
-    if (restSeconds > 0.5) pieces.push({ name: 'Other', seconds: restSeconds, colour: '#e2e6eb' });
+    if (restSeconds > 0.5) pieces.push({ name: 'Other', seconds: restSeconds, texture: texture(-1) });
 
     return h('div', { class: 'browser-split' },
       h('div', { class: 'label', text: 'By browser' }),
       h('div', { class: 'split-strip', 'aria-hidden': 'true' },
-        pieces.map((piece) => h('i', { style: `width:${share(piece.seconds, total).width}%;background:${piece.colour}` }))),
+        pieces.map((piece) => h('i', { class: piece.texture, style: `width:${share(piece.seconds, total).width}%` }))),
       h('div', { class: 'split-legend' },
         pieces.map((piece) => h('span', null,
+          h('i', { class: `swatch ${piece.texture}`, 'aria-hidden': 'true' }),
           h('b', { text: piece.name }),
           h('span', { class: 'num', text: durationText(piece.seconds) })))));
   }
@@ -763,11 +755,8 @@
       : (system.platform || 'Desktop');
 
     const header = pageHead({
-      eyebrow: `Tally ${system.version} · ${platform}`,
       title: 'Settings',
-      right: [saved
-        ? h('span', { class: 'stamp', text: 'Saved' })
-        : h('span', { class: 'stamp', text: 'Nothing leaves this PC' })],
+      right: saved ? [h('span', { class: 'stamp', text: 'Saved' })] : null,
     });
 
     const index = [
@@ -778,7 +767,7 @@
     ];
 
     const indexRail = h('aside', { class: 'index', 'aria-label': 'Settings sections' },
-      index.map(([key, label], i) => h('button', {
+      index.map(([key, label]) => h('button', {
         type: 'button',
         class: state.openGroup === key ? 'on' : null,
         onclick: () => {
@@ -787,29 +776,34 @@
             button.classList.toggle('on', button.dataset.group === key);
           });
           const target = document.getElementById(`group-${key}`);
-          if (target) target.scrollIntoView({ block: 'start' });
+          if (target) target.scrollIntoView({ block: 'start', behavior: smoothScroll() });
         },
         dataset: { group: key },
-      },
-      h('span', { class: 'n num', text: `0${i + 1}` }),
-      h('span', { text: label }))));
+      }, label)));
 
     const browsers = system.browserList || [];
     const installed = browsers.filter((browser) => browser.installed);
     const enabled = settings.browsers === null ? installed.map((browser) => browser.id) : settings.browsers;
 
-    const recording = h('section', { class: 'group', id: 'group-recording' },
-      groupHead('01', 'Recording', tracking.mediaAvailable === false ? 'Keyboard and mouse only' : 'Media sessions readable'),
-      h('div', { class: 'readout' },
-        readoutCell('State', STATES[reason].label, 'state'),
-        readoutCell('Last sample', clockOf(tracking.lastSampleAt, true), 'num'),
-        readoutCell('Idle poll', tracking.idle ? '20 s' : `${tracking.sampling || settings.sampleSeconds} s`, 'num'),
-        readoutCell('Media sessions', tracking.mediaAvailable === false
-          ? 'Unavailable'
-          : tracking.mediaSessions == null ? 'Not read' : `${tracking.mediaSessions} detected`, 'num')),
-      switchRow('Record screen time', 'Pause any time from the sidebar; nothing is deleted.', !settings.paused,
+    const diagnostics = h('details', {
+      class: 'diag',
+      open: state.diagOpen,
+      ontoggle: (event) => { state.diagOpen = event.target.open; },
+    },
+    h('summary', null, h('span', { html: CHEVRON }), 'Diagnostics'),
+    h('div', { class: 'readout' },
+      readoutCell('State', STATES[reason].label),
+      readoutCell('Last sample', clockOf(tracking.lastSampleAt, true), true),
+      readoutCell('Idle poll', tracking.idle ? '20 s' : `${tracking.sampling || settings.sampleSeconds} s`, true),
+      readoutCell('Media sessions', tracking.mediaAvailable === false
+        ? 'Unavailable'
+        : tracking.mediaSessions == null ? 'Not read' : `${tracking.mediaSessions} detected`, true)));
+
+    const recording = h('section', { class: 'group slab', id: 'group-recording' },
+      groupHead('Recording'),
+      switchRow('Record screen time', 'Pause any time from the sidebar. Nothing is deleted.', !settings.paused,
         () => saveSettings({ paused: !settings.paused })),
-      switchRow('Open Tally at login', 'Start hidden in the tray when you sign in to Windows.', settings.launchAtLogin,
+      switchRow('Open Tally at login', 'Starts hidden in the tray when you sign in.', settings.launchAtLogin,
         () => saveSettings({ launchAtLogin: !settings.launchAtLogin })),
       h('div', { class: 'fields' },
         fieldSelect('Sample every',
@@ -824,14 +818,14 @@
           [[30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours'], ['never', 'Never']],
           settings.mediaCeilingMinutes == null ? 'never' : settings.mediaCeilingMinutes,
           (value) => saveSettings({ mediaCeilingMinutes: value === 'never' ? null : Number(value) }))),
-      h('p', { class: 'field-hint', text: 'Media keeps the clock running without input until this limit, then waits for a keystroke. Never means it keeps counting until the player stops.' }),
-      tracking.mediaAvailable === false
-        ? h('p', { class: 'field-hint', text: 'Windows media sessions are not readable on this build, so idle time is measured from keyboard and mouse only.' })
-        : null);
+      h('p', { class: 'field-hint', text: tracking.mediaAvailable === false
+        ? 'Media sessions are not readable on this build, so idle time is measured from keyboard and mouse only.'
+        : 'Playing media keeps counting without input until this limit.' }),
+      diagnostics);
 
-    const websites = h('section', { class: 'group', id: 'group-websites' },
-      groupHead('02', 'Websites', `${plural(installed.length, 'browser', 'browsers')} found`),
-      switchRow('Record website names', 'Copies each browser’s history to a temporary folder, matches the window title, then deletes the copy.',
+    const websites = h('section', { class: 'group slab', id: 'group-websites' },
+      groupHead('Websites', plural(installed.length, 'browser', 'browsers')),
+      switchRow('Record website names', 'Matched from each browser’s local history. Nothing is uploaded.',
         settings.recordWebsites, () => saveSettings({ recordWebsites: !settings.recordWebsites })),
       installed.length
         ? h('div', { class: 'browsers' }, installed.map((browser) => h('label', { class: 'browser' },
@@ -850,22 +844,20 @@
           h('span', { class: 'check', html: CHECK }),
           browserGlyph(browser.id),
           h('span', { class: 'bn', text: browser.name }))))
-        : h('p', { class: 'note', text: 'No supported browser found on this PC yet.' }),
-      h('p', { class: 'note' },
-        'The copy never leaves this device. ',
-        h('button', {
-          class: 'link-btn',
-          type: 'button',
-          onclick: async () => {
-            const list = await api.rescanBrowsers();
-            state.snapshot.system.browserList = list;
-            render();
-          },
-        }, 'Rescan browsers')));
+        : h('p', { class: 'note', text: 'No supported browser found yet.' }),
+      h('button', {
+        class: 'link-btn',
+        type: 'button',
+        onclick: async () => {
+          const list = await api.rescanBrowsers();
+          state.snapshot.system.browserList = list;
+          render();
+        },
+      }, 'Rescan browsers'));
 
     const oldest = system.oldestDay;
-    const dataGroup = h('section', { class: 'group', id: 'group-data' },
-      groupHead('03', 'Data', `${formatBytes(system.fileSize || 0)} on disk`),
+    const dataGroup = h('section', { class: 'group slab', id: 'group-data' },
+      groupHead('Data', formatBytes(system.fileSize || 0)),
       h('div', { class: 'row' },
         h('div', null,
           h('div', { class: 'row-t', text: 'Keep history for' }),
@@ -882,53 +874,49 @@
           }, label))))),
       h('div', { class: 'stats' },
         h('div', null, h('div', { class: 'k', text: 'Days stored' }), h('div', { class: 'v num', text: String(system.storedDays || 0) })),
-        h('div', null, h('div', { class: 'k', text: 'Oldest day' }), h('div', { class: 'v num', text: oldest ? shortDayLabel(oldest) : '—' })),
-        h('div', { class: 'path-stat' },
-          h('div', { class: 'k', text: 'File' }),
-          h('div', { class: 'v num path', text: system.dataPath, title: system.dataPath }))),
-      h('div', { class: 'row destructive' },
+        h('div', null, h('div', { class: 'k', text: 'Oldest day' }), h('div', { class: 'v num', text: oldest ? shortDayLabel(oldest) : '—' }))),
+      h('div', { class: 'row' },
         h('div', null,
           h('div', { class: 'row-t danger', text: 'Delete all data' }),
-          h('div', { class: 'row-d', text: 'Removes every day, then starts empty. It cannot be undone.' })),
+          h('div', { class: 'row-d', text: 'Removes every day and starts empty. This cannot be undone.' })),
         h('div', { class: 'row-r' },
           h('button', { class: 'btn btn-danger', type: 'button', onclick: () => dialog.showModal() }, 'Delete data…'))));
 
-    const about = h('section', { class: 'group', id: 'group-about' },
-      groupHead('04', 'About', `Tally ${system.version}`),
-      h('p', { class: 'about', text: 'One local JSON file. No account, no extension, no upload, no network requests. Tally reads the title of the window in front every few seconds and writes the total here.' }),
-      h('p', { class: 'about faint', text: `${platform} · ${system.dataPath}` }));
-
-    const panel = h('section', { class: 'panel' },
-      recording,
-      websites,
-      dataGroup,
-      about,
-      h('div', { class: 'panel-foot' },
-        h('span', { text: `Tally ${system.version}` }),
-        h('span', { class: 'num', text: platform }),
-        h('span', { text: 'No network requests' }),
+    const about = h('section', { class: 'group slab', id: 'group-about' },
+      groupHead('About'),
+      h('p', { class: 'about', text: 'Tally keeps one JSON file on this PC. No account, no upload, no network requests.' }),
+      h('div', { class: 'about-meta' },
+        h('span', { class: 'num', text: `Tally ${system.version}` }),
+        h('span', { class: 'num', text: platform })),
+      h('div', { class: 'about-path num', text: system.dataPath }),
+      h('div', { class: 'about-actions' },
         h('button', {
           class: 'link-btn',
           type: 'button',
           onclick: () => api.openDataFolder(),
         }, 'Show data folder', h('span', { class: 'ext', html: EXTERNAL }))));
 
+    const panel = h('div', { class: 'panel' }, recording, websites, dataGroup, about);
+
     return h('div', { class: 'page-inner' },
       header,
       h('div', { class: 'settings' }, indexRail, panel));
   }
 
-  function groupHead(number, title, meta) {
+  function groupHead(title, meta) {
     return h('div', { class: 'group-head' },
-      h('span', { class: 'group-n num', text: number }),
-      h('span', { class: 'group-t', text: title }),
-      meta ? h('span', { class: 'group-m', text: meta }) : null);
+      h('h2', { class: 'group-t', text: title }),
+      meta ? h('span', { class: 'group-m num', text: meta }) : null);
   }
 
-  function readoutCell(label, value, className) {
+  function readoutCell(label, value, numeric = false) {
     return h('div', null,
       h('span', { class: 'k', text: label }),
-      h('span', { class: `v${className === 'num' ? ' num' : ''}${className === 'state' ? ' state' : ''}`, text: value }));
+      h('span', { class: `v${numeric ? ' num' : ''}`, text: value }));
+  }
+
+  function smoothScroll() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
   }
 
   function switchRow(title, description, checked, onChange) {
@@ -1013,11 +1001,16 @@
     const paused = snap.settings.paused;
     const canPause = snap.tracking.supported;
 
+    const counting = copy.reason === 'recording' || copy.reason === 'media';
+    const why = counting
+      ? (snap.tracking.app ? shortName(snap.tracking.app) : null)
+      : copy.reason === 'self' ? null : copy.why;
+
     host.replaceChildren(h('div', { class: 'state' },
       h('div', { class: 'state-head' },
         h('span', { class: `dot${copy.dot ? '' : ' hollow'}` }),
         h('span', { class: 'state-label', text: copy.label, title: copy.label })),
-      h('p', { class: 'state-why', text: copy.why }),
+      why ? h('p', { class: 'state-why', text: why, title: copy.why }) : null,
       canPause
         ? h('button', {
           class: 'state-action',
@@ -1032,19 +1025,54 @@
 
   /* ---------- render ---------- */
 
+  // Draws the current route. Entrance motion plays only when state.enter is
+  // set (first load, screen or range change), never on background refreshes.
   function render() {
     const snap = state.snapshot;
+    renderNav();
     if (!snap) {
-      view.replaceChildren(h('p', { class: 'loading', text: 'Reading local totals…' }));
+      view.setAttribute('aria-busy', String(!state.loadError));
+      view.replaceChildren(state.loadError ? loadError() : skeleton(state.route));
       return;
     }
+    view.removeAttribute('aria-busy');
     const page = state.route === 'apps' ? renderApps(snap)
       : state.route === 'sites' ? renderSites(snap)
         : state.route === 'settings' ? renderSettings(snap)
           : renderToday(snap);
+    if (state.enter) {
+      page.classList.add('enter');
+      state.enter = false;
+    }
     view.replaceChildren(page);
-    renderNav();
     renderRailState();
+  }
+
+  // Static placeholder shaped like the screen that is loading.
+  function skeleton(route) {
+    const sk = (className) => h('span', { class: `sk ${className}` });
+    const rows = (count) => Array.from({ length: count }, () => sk('sk-row'));
+    const body = route === 'settings'
+      ? [h('div', { style: 'margin-top:32px;max-width:720px' }, rows(8))]
+      : route === 'today'
+        ? [sk('sk-figure'), sk('sk-line'), sk('sk-chart'), rows(5)]
+        : [sk('sk-figure'), h('div', { style: 'margin-top:32px' }, rows(7))];
+    return h('div', { class: 'page-inner', 'aria-hidden': 'true' }, sk('sk-title'), body);
+  }
+
+  function loadError() {
+    return h('div', { class: 'page-inner' },
+      h('div', { class: 'load-error list-empty' },
+        h('p', { text: 'Couldn’t read totals.' }),
+        h('button', {
+          class: 'link-btn',
+          type: 'button',
+          onclick: () => {
+            state.loadError = false;
+            render();
+            refresh();
+          },
+        }, 'Retry')));
   }
 
   function renderNav() {
@@ -1064,7 +1092,12 @@
       if (!editing) render();
       else renderRailState();
     } catch {
-      // keep the last good screen rather than flashing an error over it
+      // keep the last good screen rather than flashing an error over it;
+      // only a first load with nothing to show offers a retry
+      if (!state.snapshot) {
+        state.loadError = true;
+        render();
+      }
     }
   }
 
@@ -1106,6 +1139,7 @@
 
   window.addEventListener('hashchange', () => {
     state.route = readRoute();
+    state.enter = true;
     render();
     view.scrollTo({ top: 0 });
   });
@@ -1126,6 +1160,7 @@
   }, 60000);
 
   state.route = readRoute();
+  render();
   refresh();
 
   /* ---------- preview bridge (opened outside Electron) ---------- */

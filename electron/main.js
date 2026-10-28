@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, Tray, nativeImage, powerMonitor, nativeTheme } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -95,6 +95,7 @@ function snapshot() {
 }
 
 function createWindow() {
+  nativeTheme.themeSource = 'dark';
   const shotWidth = SCREENSHOT ? Number(process.env.TALLY_WIDTH) || 0 : 0;
   const shotHeight = SCREENSHOT ? Number(process.env.TALLY_HEIGHT) || 0 : 0;
   win = new BrowserWindow({
@@ -104,7 +105,7 @@ function createWindow() {
     minWidth: shotWidth ? 240 : 880,
     minHeight: shotHeight ? 320 : 640,
     show: false,
-    backgroundColor: '#f2f4f7',
+    backgroundColor: '#080808',
     icon: path.join(ROOT, 'build', 'icon.png'),
     title: 'Tally',
     autoHideMenuBar: true,

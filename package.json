@@ -12,6 +12,7 @@
     "native": "node scripts/build-native.js",
     "make-icons": "node scripts/make-icons.js",
     "icons": "node scripts/fetch-icons.js",
+    "dither": "node scripts/make-dither.js",
     "check": "node scripts/koffi-test.js",
     "test": "node scripts/tracker-test.js",
     "dist": "node scripts/build-native.js && electron-builder --win nsis --publish never",
